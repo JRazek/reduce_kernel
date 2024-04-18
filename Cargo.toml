@@ -1,0 +1,17 @@
+[package]
+name = "softmax_kernel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cudarc = { git = "https://github.com/coreylowman/cudarc.git" }
+
+#[patch.crates-io]
+#cudarc = { path = "../cudarc" }
+
+[features]
+cuda-version-from-build-system = ["cudarc/cuda-version-from-build-system"]
+cuda-12020 = ["cudarc/cuda-12020"]
+
+[build-dependencies]
+glob = { version = "0.3.1" }
