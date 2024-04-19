@@ -15,8 +15,11 @@ pub fn softmax(
     dev: Arc<CudaDevice>,
     reduce_plan: &ReduceCudaPlan,
 ) -> Result<Tensor<f32>, Box<dyn std::error::Error>> {
-    assert!(tensor.shape.elements_count() % 32 == 0);
-    assert!(tensor.shape.elements_count() > 0);
+    tensor.shape.eq(&reduce_plan.reduce_plan.tensor_shape);
+
+    let tensor_len = tensor.shape.elements_count() as u32;
+
+    assert!((1..32).contains(&tensor_len));
 
     if !dev.has_func("kernel_ops", "softmax_f32") {
         let ptx = Ptx::from_src(PTX_SRC);
@@ -27,12 +30,13 @@ pub fn softmax(
         .get_func("kernel_ops", "softmax_f32")
         .ok_or("could not load softmax kernel")?;
 
-    let block_len: u32 = 32;
-    let grid_len = (tensor.shape.elements_count() / block_len) as u32; //should be no remained as
-                                                                       //for now
+    let block_len: u32 = 32.min(tensor_len);
+    let grid_len = (tensor_len.div_ceil(block_len)) as u32; //should be no remained as
+                                                            //for now
 
     let type_len = std::mem::size_of::<f32>() as u32;
 
+    //each tensor to reduce is of size
     let cfg = LaunchConfig {
         block_dim: (block_len, 1, 1),
         grid_dim: (grid_len, 1, 1),
@@ -52,6 +56,36 @@ mod test {
     use super::*;
     use crate::reduce::ReduceConfig;
     use crate::reduce::ReducePlan;
+
+    #[test]
+    pub fn test_softmax_small() {
+        let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
+
+        let mut data = [1f32; 24];
+        let tensor = Tensor::new(
+            cuda_dev.clone(),
+            cuda_dev.htod_sync_copy(&data).unwrap(),
+            Shape::new(vec![2, 3, 4]),
+        );
+
+        let reduce_plan = ReducePlan::precompute(ReduceConfig {
+            tensor_shape: tensor.shape.clone(),
+            reduce_dims: vec![1],
+        });
+
+        println!("indices: {:?}", reduce_plan.indices);
+
+        let reduce_cuda_plan = ReduceCudaPlan::from_reduce_plan(reduce_plan, cuda_dev.clone())
+            .expect("could not create reduce cuda plan");
+
+        let tensor = softmax(tensor, cuda_dev.clone(), &reduce_cuda_plan).unwrap();
+
+        let res = tensor.as_vec().unwrap();
+
+        println!("{:?}", res);
+
+        panic!();
+    }
 
     #[test]
     pub fn test_softmax() {

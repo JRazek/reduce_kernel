@@ -4,12 +4,13 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct ReduceCudaPlan {
-    indices: CudaSlice<usize>,
+    pub(crate) indices_dev: CudaSlice<usize>,
+    pub(crate) reduce_plan: ReducePlan,
 }
 
 unsafe impl DeviceRepr for &ReduceCudaPlan {
     fn as_kernel_param(&self) -> *mut std::ffi::c_void {
-        (&(self.indices)).as_kernel_param()
+        (&(self.indices_dev)).as_kernel_param()
     }
 }
 
@@ -20,6 +21,9 @@ impl ReduceCudaPlan {
     ) -> Result<ReduceCudaPlan, DriverError> {
         let slice = dev.htod_sync_copy(&reduce_plan.indices)?;
 
-        Ok(ReduceCudaPlan { indices: slice })
+        Ok(ReduceCudaPlan {
+            indices_dev: slice,
+            reduce_plan,
+        })
     }
 }

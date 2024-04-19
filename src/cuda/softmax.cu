@@ -22,14 +22,14 @@ __device__ auto softmax(const T *in, T *out, const std::size_t *global_offsets)
 
   auto x = in[tensor_idx];
 
-  auto max_x = reduce(x, Max<T>{});
+  //  auto max_x = reduce(x, Max<T>{});
 
-  auto e_xi = std::exp(in[idx] - max_x);
-  auto sum = reduce(e_xi, Plus<T>{});
+  //  auto e_xi = std::exp(in[idx] - max_x);
+  auto sum = reduce(x, Plus<T>{});
 
-  auto y_i = e_xi / sum;
+  //  auto y_i = e_xi / sum;
 
-  out[tensor_idx] = y_i;
+  out[tensor_idx] = sum;
 }
 
 #define EXTERN(T, SUFFIX)                                                      \

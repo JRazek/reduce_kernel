@@ -24,6 +24,8 @@ __device__ auto reduce(T in, const Op reduce_op) -> T {
     __syncthreads();
   }
 
+  // broadcast should happen from the first thread of a block.
+
   return shared[0]; // is broadcast happening implicitly here or I need to use
                     // sth else?
 }

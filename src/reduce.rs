@@ -13,6 +13,8 @@ pub struct ReduceConfig {
 
 #[derive(Debug, Clone)]
 pub struct ReducePlan {
+    pub(crate) tensor_shape: Shape,
+    pub(crate) reduce_tensor_len: usize,
     pub(crate) indices: Vec<usize>,
 }
 
@@ -76,7 +78,11 @@ impl ReducePlan {
             }
         }
 
-        let plan = ReducePlan { indices };
+        let plan = ReducePlan {
+            indices,
+            tensor_shape,
+            reduce_tensor_len,
+        };
 
         plan
     }
@@ -103,7 +109,7 @@ mod tests {
     #[test]
     fn test_plan01() {
         let tensor_shape = Shape::from([2, 3, 4]);
-        let ReducePlan { indices } = ReducePlan::precompute(ReduceConfig {
+        let ReducePlan { indices, .. } = ReducePlan::precompute(ReduceConfig {
             tensor_shape,
             reduce_dims: vec![0, 2],
         });
@@ -142,7 +148,7 @@ mod tests {
     #[test]
     fn test_plan02() {
         let tensor_shape = Shape::from([2, 3, 4]);
-        let ReducePlan { indices } = ReducePlan::precompute(ReduceConfig {
+        let ReducePlan { indices, .. } = ReducePlan::precompute(ReduceConfig {
             tensor_shape,
             reduce_dims: vec![1],
         });
