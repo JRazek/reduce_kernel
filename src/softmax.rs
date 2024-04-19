@@ -64,8 +64,6 @@ pub fn precompute_global_offsets(
     let reduce_strides = reduce_tensors_shapes.compute_strides();
     println!("reduce_strides: {:?}", reduce_strides);
 
-    let global_non_reduce_strides = element_mul(reduce_strides.clone(), &non_reduce_strides);
-
     // for idx = blockDim.x * blockId.x + threadId.x, "idx-th" element corresponds to an index from which it has to fetch data in initial tensor.
     let mut indices = Vec::with_capacity(non_reduce_strides[0] * reduce_strides[0]);
 
@@ -74,11 +72,16 @@ pub fn precompute_global_offsets(
     println!("non_reduce_tensor_len: {:?}", non_reduce_tensor_len);
     println!("reduce_tensor_len: {:?}", reduce_tensor_len);
 
+    let global_non_reduce_strides = element_mul(reduce_strides.clone(), &non_reduce_strides);
+
     for non_reduce_tensor_index in 0..non_reduce_tensor_len {
         for reduce_tensor_index in 0..reduce_tensor_len {
             let global_tensor_idx = dot(
+                &compute_strided_index(non_reduce_tensor_index, &non_reduce_strides),
+                &global_non_reduce_strides,
+            ) + dot(
                 &compute_strided_index(reduce_tensor_index, &reduce_strides),
-                &reduce_strides, //mul with (1, 1, .., 1) - identity
+                &strides, //mul with (1, 1, .., 1) - identity
             );
 
             indices.push(global_tensor_idx);
@@ -124,41 +127,93 @@ pub fn softmax(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    //    #[test]
-    //    fn test_compute_strided_index() {
-    //        let shape = Shape::from([2, 3, 4]);
-    //        let reduce_plan = precompute_global_offsets(
-    //            ReduceOpConfig {
-    //                reduce_dims: vec![0, 2],
-    //            },
-    //            shape,
-    //        );
-    //    }
-
-    //    #[test]
-    //    fn test_compute_strided_index21() {
-    //        let shape = Shape::from([2, 3, 4]);
-    //        let ReducePlan { indices } = precompute_global_offsets(
-    //            ReduceOpConfig {
-    //                reduce_dims: vec![0, 2],
-    //            },
-    //            shape,
-    //        );
-    //        println!("indices: {:?}", indices);
-    //
-    //        assert_eq!(0, 0);
-    //        assert_eq!(1, 1);
-    //        assert_eq!(2, 2);
-    //        assert_eq!(3, 3);
-    //
-    //        assert_eq!(4, 12);
-    //        assert_eq!(5, 13);
-    //        assert_eq!(6, 14);
-    //        assert_eq!(7, 15);
-    //    }
     #[test]
-    fn test_compute_strided_index21() {
+    fn test_plan01() {
+        let shape = Shape::from([2, 3, 4]);
+        let ReducePlan { indices } = precompute_global_offsets(
+            ReduceOpConfig {
+                reduce_dims: vec![0, 2],
+            },
+            shape,
+        );
+        println!("indices: {:?}", indices);
+
+        assert_eq!(indices[0], 0);
+        assert_eq!(indices[1], 1);
+        assert_eq!(indices[2], 2);
+        assert_eq!(indices[3], 3);
+
+        assert_eq!(indices[4], 12);
+        assert_eq!(indices[5], 13);
+        assert_eq!(indices[6], 14);
+        assert_eq!(indices[7], 15);
+
+        assert_eq!(indices[8], 4);
+        assert_eq!(indices[9], 5);
+        assert_eq!(indices[10], 6);
+        assert_eq!(indices[11], 7);
+
+        assert_eq!(indices[12], 16);
+        assert_eq!(indices[13], 17);
+        assert_eq!(indices[14], 18);
+        assert_eq!(indices[15], 19);
+
+        assert_eq!(indices[16], 8);
+        assert_eq!(indices[17], 9);
+        assert_eq!(indices[18], 10);
+        assert_eq!(indices[19], 11);
+
+        assert_eq!(indices[20], 20);
+        assert_eq!(indices[21], 21);
+        assert_eq!(indices[22], 22);
+        assert_eq!(indices[23], 23);
+    }
+    #[test]
+    fn test_plan02() {
+        let shape = Shape::from([2, 3, 4]);
+        let ReducePlan { indices } = precompute_global_offsets(
+            ReduceOpConfig {
+                reduce_dims: vec![1],
+            },
+            shape,
+        );
+        println!("indices: {:?}", indices);
+
+        assert_eq!(indices[0], 0);
+        assert_eq!(indices[1], 4);
+        assert_eq!(indices[2], 8);
+
+        assert_eq!(indices[3], 1);
+        assert_eq!(indices[4], 5);
+        assert_eq!(indices[5], 9);
+
+        assert_eq!(indices[6], 2);
+        assert_eq!(indices[7], 6);
+        assert_eq!(indices[8], 10);
+
+        assert_eq!(indices[9], 3);
+        assert_eq!(indices[10], 7);
+        assert_eq!(indices[11], 11);
+
+        assert_eq!(indices[12], 12);
+        assert_eq!(indices[13], 16);
+        assert_eq!(indices[14], 20);
+
+        assert_eq!(indices[15], 13);
+        assert_eq!(indices[16], 17);
+        assert_eq!(indices[17], 21);
+
+        assert_eq!(indices[18], 14);
+        assert_eq!(indices[19], 18);
+        assert_eq!(indices[20], 22);
+
+        assert_eq!(indices[21], 15);
+        assert_eq!(indices[22], 19);
+        assert_eq!(indices[23], 23);
+    }
+
+    #[test]
+    fn test_compute_strided_index01() {
         let strides = vec![4, 4, 1];
         let el_id = 4;
         let strided_index = compute_strided_index(el_id, &strides);
@@ -166,7 +221,7 @@ mod tests {
         assert_eq!(strided_index, vec![1, 0, 0]);
     }
     #[test]
-    fn test_compute_strided_index22() {
+    fn test_compute_strided_index02() {
         let strides = vec![3, 1, 1];
         let el_id = 1;
         let strided_index = compute_strided_index(el_id, &strides);
