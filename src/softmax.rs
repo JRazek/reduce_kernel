@@ -15,7 +15,7 @@ pub fn softmax(
     dev: Arc<CudaDevice>,
     reduce_plan: &ReduceCudaPlan,
 ) -> Result<Tensor<f32>, Box<dyn std::error::Error>> {
-    tensor.shape.eq(&reduce_plan.reduce_plan.tensor_shape);
+    assert_eq!(tensor.shape, reduce_plan.reduce_plan.tensor_shape);
 
     let tensor_len = tensor.shape.elements_count() as u32;
 
