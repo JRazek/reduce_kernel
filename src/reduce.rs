@@ -1,30 +1,21 @@
+mod reduce_cuda;
+
 use cudarc::driver::{CudaDevice, CudaSlice, DeviceRepr, DriverError, LaunchAsync, LaunchConfig};
 use std::sync::Arc;
 
 use super::tensor::{compute_strided_index, Shape, Tensor};
 
-pub struct ReduceOpConfig {
+pub struct ReduceConfig {
     pub reduce_dims: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ReducePlan {
-    indices: Vec<usize>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ReduceCudaPlan {
-    indices: CudaSlice<usize>,
+    pub(crate) indices: Vec<usize>,
 }
 
 impl ReducePlan {
-    pub fn as_cuda_plan(&self, dev: Arc<CudaDevice>) -> Result<ReduceCudaPlan, DriverError> {
-        let slice = dev.htod_sync_copy(&self.indices)?;
-
-        Ok(ReduceCudaPlan { indices: slice })
-    }
-
-    pub fn precompute(tensor_shape: Shape, reduce_op_config: ReduceOpConfig) -> ReducePlan {
+    pub fn precompute(tensor_shape: Shape, reduce_op_config: ReduceConfig) -> ReducePlan {
         let mut reduce_dims = reduce_op_config.reduce_dims;
         reduce_dims.sort();
         reduce_dims.dedup();
@@ -108,7 +99,7 @@ mod tests {
         let shape = Shape::from([2, 3, 4]);
         let ReducePlan { indices } = ReducePlan::precompute(
             shape,
-            ReduceOpConfig {
+            ReduceConfig {
                 reduce_dims: vec![0, 2],
             },
         );
@@ -149,7 +140,7 @@ mod tests {
         let shape = Shape::from([2, 3, 4]);
         let ReducePlan { indices } = ReducePlan::precompute(
             shape,
-            ReduceOpConfig {
+            ReduceConfig {
                 reduce_dims: vec![1],
             },
         );
