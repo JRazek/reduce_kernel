@@ -13,6 +13,8 @@ __device__ auto reduce(T in, const Op reduce_op) -> T {
   auto idx = blockIdx.x * blockDim.x + threadIdx.x; // # in grid.
 
   extern __shared__ T shared[];
+  shared[tid] = in;
+
   __syncthreads();
 
   for (auto s = blockDim.x / 2; s > 0; s >>= 1) {

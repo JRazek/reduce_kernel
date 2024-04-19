@@ -1,8 +1,6 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
-#include <functional>
-
 #include "reduce_kernel.cuh"
 
 template <typename T> struct Plus {
@@ -11,18 +9,10 @@ template <typename T> struct Plus {
 
 // TODO - research "atomic max"
 template <typename T> struct Max {
-  __device__ auto operator()(T a, T b) const -> T { return a + b; }
+  __device__ auto operator()(T a, T b) const -> T { return a > b ? a : b; }
 };
 
 template <typename T>
-/**
- * @param global_offsets
-         preprocessed on CPU.
-         for each consecutive idx in kernel, one needs to associate appropriate
-         offsets in data. why? We want to have data corresponding to the same
-         reduced tensor in the consecutive memory cells.
- * @return
- */
 __device__ auto softmax(const T *in, T *out, const std::size_t *global_offsets)
     -> void {
 
@@ -43,15 +33,11 @@ __device__ auto softmax(const T *in, T *out, const std::size_t *global_offsets)
 }
 
 #define EXTERN(T, SUFFIX)                                                      \
-  __global__ void softmax_##SUFFIX(T *in, T *out, T mul) {                     \
-    printf("softmax_\n");                                                      \
+  extern "C" __global__ void softmax_##SUFFIX(                                 \
+      T *in, T *out, const std::size_t *global_offsets) {                      \
+    softmax(in, out, global_offsets);                                          \
   }
 
 // actually they are not always f32/f64 by cpp standard but for simplicity -
 // assume that yes.
-extern "C" {
-__global__ void softmax_f32(const float *in, float *out,
-                            const std::size_t *global_offsets) {
-  softmax(in, out, global_offsets);
-}
-}
+EXTERN(float, f32) // currently lets keep it and make it f32 only.

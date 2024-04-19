@@ -8,6 +8,8 @@ use super::reduce::reduce_cuda::ReduceCudaPlan;
 
 const PTX_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/softmax.ptx"));
 
+pub trait SoftmaxKernelDtype: DeviceRepr {}
+
 pub fn softmax(
     tensor: Tensor<f32>,
     dev: Arc<CudaDevice>,
@@ -26,7 +28,8 @@ pub fn softmax(
         .ok_or("could not load softmax kernel")?;
 
     let block_len: u32 = 32;
-    let grid_len = (tensor.shape.elements_count() / block_len) as u32;
+    let grid_len = (tensor.shape.elements_count() / block_len) as u32; //should be no remained as
+                                                                       //for now
 
     let type_len = std::mem::size_of::<f32>() as u32;
 
@@ -41,4 +44,41 @@ pub fn softmax(
     unsafe { softmax_kernel.launch(cfg, params)? };
 
     Ok(tensor)
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use crate::reduce::ReduceConfig;
+    use crate::reduce::ReducePlan;
+
+    #[test]
+    pub fn test_softmax() {
+        let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
+
+        let mut data = [0f32; 64];
+        data[31] = 100f32;
+        let tensor = Tensor::new(
+            cuda_dev.clone(),
+            cuda_dev.htod_sync_copy(&data).unwrap(),
+            Shape::new(vec![64]),
+        );
+
+        let reduce_plan = ReducePlan::precompute(ReduceConfig {
+            tensor_shape: tensor.shape.clone(),
+            reduce_dims: vec![0],
+        });
+
+        let reduce_cuda_plan = ReduceCudaPlan::from_reduce_plan(reduce_plan, cuda_dev.clone())
+            .expect("could not create reduce cuda plan");
+
+        let tensor = softmax(tensor, cuda_dev.clone(), &reduce_cuda_plan).unwrap();
+
+        let res = tensor.as_vec().unwrap();
+
+        println!("{:?}", res);
+
+        panic!();
+    }
 }

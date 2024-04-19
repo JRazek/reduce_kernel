@@ -24,6 +24,7 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Shape {
     pub(crate) shape: Vec<usize>,
 }

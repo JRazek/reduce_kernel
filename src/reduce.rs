@@ -1,5 +1,5 @@
-pub mod reduce_cuda;
 pub mod ops;
+pub mod reduce_cuda;
 
 use cudarc::driver::{CudaDevice, CudaSlice, DeviceRepr, DriverError, LaunchAsync, LaunchConfig};
 use std::sync::Arc;
@@ -7,6 +7,7 @@ use std::sync::Arc;
 use super::tensor::{compute_strided_index, Shape, Tensor};
 
 pub struct ReduceConfig {
+    pub tensor_shape: Shape,
     pub reduce_dims: Vec<usize>,
 }
 
@@ -16,8 +17,12 @@ pub struct ReducePlan {
 }
 
 impl ReducePlan {
-    pub fn precompute(tensor_shape: Shape, reduce_op_config: ReduceConfig) -> ReducePlan {
-        let mut reduce_dims = reduce_op_config.reduce_dims;
+    pub fn precompute(reduce_op_config: ReduceConfig) -> ReducePlan {
+        let ReduceConfig {
+            mut tensor_shape,
+            mut reduce_dims,
+        } = reduce_op_config;
+
         reduce_dims.sort();
         reduce_dims.dedup();
 
@@ -97,13 +102,11 @@ mod tests {
     use super::*;
     #[test]
     fn test_plan01() {
-        let shape = Shape::from([2, 3, 4]);
-        let ReducePlan { indices } = ReducePlan::precompute(
-            shape,
-            ReduceConfig {
-                reduce_dims: vec![0, 2],
-            },
-        );
+        let tensor_shape = Shape::from([2, 3, 4]);
+        let ReducePlan { indices } = ReducePlan::precompute(ReduceConfig {
+            tensor_shape,
+            reduce_dims: vec![0, 2],
+        });
         println!("indices: {:?}", indices);
 
         assert_eq!(indices[0], 0);
@@ -138,13 +141,11 @@ mod tests {
     }
     #[test]
     fn test_plan02() {
-        let shape = Shape::from([2, 3, 4]);
-        let ReducePlan { indices } = ReducePlan::precompute(
-            shape,
-            ReduceConfig {
-                reduce_dims: vec![1],
-            },
-        );
+        let tensor_shape = Shape::from([2, 3, 4]);
+        let ReducePlan { indices } = ReducePlan::precompute(ReduceConfig {
+            tensor_shape,
+            reduce_dims: vec![1],
+        });
         println!("indices: {:?}", indices);
 
         assert_eq!(indices[0], 0);
