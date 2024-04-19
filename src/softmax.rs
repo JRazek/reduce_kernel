@@ -15,9 +15,16 @@ pub struct ReducePlan {
     indices: Vec<usize>,
 }
 
+#[derive(Debug)]
+pub struct ReduceCudaPlan {
+    indices: CudaSlice<usize>,
+}
+
 impl ReducePlan {
-    pub fn as_cuda_slice(&self, dev: Arc<CudaDevice>) -> Result<CudaSlice<usize>, DriverError> {
-        dev.htod_sync_copy(&self.indices)
+    pub fn as_cuda_plan(&self, dev: Arc<CudaDevice>) -> Result<ReduceCudaPlan, DriverError> {
+        let slice = dev.htod_sync_copy(&self.indices)?;
+
+        Ok(ReduceCudaPlan { indices: slice })
     }
 
     pub fn precompute(tensor_shape: Shape, reduce_op_config: ReduceOpConfig) -> ReducePlan {
