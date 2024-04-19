@@ -7,7 +7,7 @@ mod tensor;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cuda_dev = CudaDevice::new(0)?;
 
-    softmax::softmax(cuda_dev)?;
+//    softmax::softmax(cuda_dev)?;
 
     Ok(())
 }

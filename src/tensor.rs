@@ -5,8 +5,58 @@ use cudarc::driver::{
 use std::sync::Arc;
 
 //very simplified. Should rather abstract shape to more generic - both for static and dynamic.
-pub struct Tensor<T, const N: usize> {
-    pub dev: Arc<CudaDevice>,
-    pub data: CudaSlice<T>,
-    pub shape: [usize; N],
+pub struct Tensor<T> {
+    pub(crate) dev: Arc<CudaDevice>,
+    pub(crate) data: CudaSlice<T>,
+    pub(crate) shape: Shape,
+}
+
+pub struct Shape {
+    pub(crate) shape: Vec<usize>,
+}
+
+impl Shape {
+    pub fn compute_strides(&self) -> Vec<usize> {
+        let mut res = vec![1; self.shape.len()];
+        for i in 1..self.shape.len() {
+            let idx = self.shape.len() - i - 1;
+
+            res[idx] = res[idx + 1] * self.shape[idx + 1];
+        }
+
+        res
+    }
+
+    pub fn new(shape: Vec<usize>) -> Self {
+        Self { shape }
+    }
+}
+
+pub(crate) fn compute_strided_index(index: usize, strides: &Vec<usize>) -> Vec<usize> {
+    let mut res = vec![0; strides.len()];
+    let mut index = index;
+    for i in 0..strides.len() {
+        res[i] = index / strides[i];
+        index %= strides[i];
+    }
+    res
+}
+
+pub(crate) fn dot(lhs: &Vec<usize>, rhs: &Vec<usize>) -> usize {
+    lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum()
+}
+
+pub(crate) fn element_mul(lhs: Vec<usize>, rhs: &Vec<usize>) -> Vec<usize> {
+    lhs.into_iter()
+        .zip(rhs.iter())
+        .map(|(l, &r)| l * r)
+        .collect()
+}
+
+impl<const N: usize> From<[usize; N]> for Shape {
+    fn from(shape: [usize; N]) -> Self {
+        Self {
+            shape: shape.into_iter().map(|x| x as usize).collect::<Vec<_>>(),
+        }
+    }
 }
