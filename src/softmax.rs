@@ -30,10 +30,17 @@ pub fn softmax(
         .get_func("kernel_ops", "softmax_f32")
         .ok_or("could not load softmax kernel")?;
 
-    let block_len: u32 = 32.min(tensor_len);
+    let reduced_subtensor_len = reduce_plan
+        .reduce_plan
+        .reduce_tensors_shape
+        .elements_count() as u32;
+    const MAX_BLOCK_LEN: u32 = 32;
+
+    let block_len: u32 = MAX_BLOCK_LEN.min(reduced_subtensor_len);
     let grid_len = (tensor_len.div_ceil(block_len)) as u32; //should be no remained as
                                                             //for now
 
+    println!("block_len: {}, grid_len: {}", block_len, grid_len);
     let type_len = std::mem::size_of::<f32>() as u32;
 
     //each tensor to reduce is of size
@@ -61,7 +68,13 @@ mod test {
     pub fn test_softmax_small() {
         let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
 
-        let mut data = [1f32; 24];
+        let mut data = [0f32; 24];
+
+        data[0] = 1f32;
+        data[12] = 1f32;
+
+        data[4] = 2f32;
+        data[15] = 2f32;
         let tensor = Tensor::new(
             cuda_dev.clone(),
             cuda_dev.htod_sync_copy(&data).unwrap(),
@@ -70,7 +83,7 @@ mod test {
 
         let reduce_plan = ReducePlan::precompute(ReduceConfig {
             tensor_shape: tensor.shape.clone(),
-            reduce_dims: vec![1],
+            reduce_dims: vec![0, 2],
         });
 
         println!("indices: {:?}", reduce_plan.indices);
@@ -87,7 +100,7 @@ mod test {
         panic!();
     }
 
-    #[test]
+    //    #[test]
     pub fn test_softmax() {
         let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
 

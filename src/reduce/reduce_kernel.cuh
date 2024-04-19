@@ -26,6 +26,9 @@ __device__ auto reduce(T in, const Op reduce_op) -> T {
 
   // broadcast should happen from the first thread of a block.
 
-  return shared[0]; // is broadcast happening implicitly here or I need to use
-                    // sth else?
+  auto first_block_thread = blockIdx.x * blockDim.x;
+
+  printf("first_block_thread: %d\n", first_block_thread);
+  return shared[first_block_thread]; // is broadcast happening implicitly here
+                                     // or I need to use sth else?
 }

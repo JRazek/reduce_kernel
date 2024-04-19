@@ -14,7 +14,7 @@ pub struct ReduceConfig {
 #[derive(Debug, Clone)]
 pub struct ReducePlan {
     pub(crate) tensor_shape: Shape,
-    pub(crate) reduce_tensor_len: usize,
+    pub(crate) reduce_tensors_shape: Shape,
     pub(crate) indices: Vec<usize>,
 }
 
@@ -45,7 +45,7 @@ impl ReducePlan {
 
         let non_reduce_strides = non_reduce_tensors_shapes.compute_strides();
 
-        let reduce_tensors_shapes = Shape::new(
+        let reduce_tensors_shape = Shape::new(
             tensor_shape
                 .shape
                 .iter()
@@ -54,13 +54,13 @@ impl ReducePlan {
                 .collect::<Vec<usize>>(),
         );
 
-        let reduce_strides = reduce_tensors_shapes.compute_strides();
+        let reduce_strides = reduce_tensors_shape.compute_strides();
 
         // for idx = blockDim.x * blockId.x + threadId.x, "idx-th" element corresponds to an index from which it has to fetch data in initial tensor.
         let mut indices = Vec::with_capacity(non_reduce_strides[0] * reduce_strides[0]);
 
         let non_reduce_tensor_len = reduce_mul_elements(&non_reduce_tensors_shapes.shape);
-        let reduce_tensor_len = reduce_mul_elements(&reduce_tensors_shapes.shape);
+        let reduce_tensor_len = reduce_mul_elements(&reduce_tensors_shape.shape);
 
         let global_non_reduce_strides = element_mul(reduce_strides.clone(), &non_reduce_strides);
 
@@ -81,7 +81,7 @@ impl ReducePlan {
         let plan = ReducePlan {
             indices,
             tensor_shape,
-            reduce_tensor_len,
+            reduce_tensors_shape,
         };
 
         plan
