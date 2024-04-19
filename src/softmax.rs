@@ -25,13 +25,9 @@ impl ReducePlan {
         reduce_dims.sort();
         reduce_dims.dedup();
 
-        println!("reduce_dims: {:?}", reduce_dims);
-
         let reduce_mask = (0..tensor_shape.shape.len())
             .map(|i| reduce_dims.binary_search(&i).is_ok())
             .collect::<Vec<bool>>();
-
-        println!("reduce_mask: {:?}", reduce_mask);
 
         let strides = tensor_shape.compute_strides();
 
@@ -43,13 +39,8 @@ impl ReducePlan {
                 .map(|(&s_i, &is_reduced)| if is_reduced { 1 } else { s_i })
                 .collect::<Vec<usize>>(),
         );
-        println!(
-            "non_reduce_tensors_shapes: {:?}",
-            non_reduce_tensors_shapes.shape
-        );
 
         let non_reduce_strides = non_reduce_tensors_shapes.compute_strides();
-        println!("non_reduce_strides: {:?}", non_reduce_strides);
 
         let reduce_tensors_shapes = Shape::new(
             tensor_shape
@@ -59,18 +50,14 @@ impl ReducePlan {
                 .map(|(&s_i, &is_reduced)| if !is_reduced { 1 } else { s_i })
                 .collect::<Vec<usize>>(),
         );
-        println!("reduce_tensors_shapes: {:?}", reduce_tensors_shapes.shape);
 
         let reduce_strides = reduce_tensors_shapes.compute_strides();
-        println!("reduce_strides: {:?}", reduce_strides);
 
         // for idx = blockDim.x * blockId.x + threadId.x, "idx-th" element corresponds to an index from which it has to fetch data in initial tensor.
         let mut indices = Vec::with_capacity(non_reduce_strides[0] * reduce_strides[0]);
 
         let non_reduce_tensor_len = reduce_mul_elements(&non_reduce_tensors_shapes.shape);
         let reduce_tensor_len = reduce_mul_elements(&reduce_tensors_shapes.shape);
-        println!("non_reduce_tensor_len: {:?}", non_reduce_tensor_len);
-        println!("reduce_tensor_len: {:?}", reduce_tensor_len);
 
         let global_non_reduce_strides = element_mul(reduce_strides.clone(), &non_reduce_strides);
 
