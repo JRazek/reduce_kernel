@@ -11,6 +11,19 @@ pub struct Tensor<T> {
     pub(crate) shape: Shape,
 }
 
+impl<T> Tensor<T>
+where
+    T: DeviceRepr,
+{
+    pub fn new(dev: Arc<CudaDevice>, data: CudaSlice<T>, shape: Shape) -> Self {
+        Self { dev, data, shape }
+    }
+
+    pub fn as_vec(&self) -> Result<Vec<T>, DriverError> {
+        self.dev.dtoh_sync_copy(&self.data)
+    }
+}
+
 pub struct Shape {
     pub(crate) shape: Vec<usize>,
 }
@@ -25,6 +38,10 @@ impl Shape {
         }
 
         res
+    }
+
+    pub fn elements_count(&self) -> u32 {
+        self.shape.iter().product::<usize>() as u32
     }
 
     pub fn new(shape: Vec<usize>) -> Self {

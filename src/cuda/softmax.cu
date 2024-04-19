@@ -50,8 +50,8 @@ __device__ auto softmax(const T *in, T *out, const std::size_t *global_offsets)
 // actually they are not always f32/f64 by cpp standard but for simplicity -
 // assume that yes.
 extern "C" {
-__global__ void softmax_f32(float *in, float *out, float mul,
-                            std::size_t *global_offsets) {
+__global__ void softmax_f32(const float *in, float *out,
+                            const std::size_t *global_offsets) {
   softmax(in, out, global_offsets);
 }
 }

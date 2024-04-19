@@ -7,6 +7,12 @@ pub struct ReduceCudaPlan {
     indices: CudaSlice<usize>,
 }
 
+unsafe impl DeviceRepr for &ReduceCudaPlan {
+    fn as_kernel_param(&self) -> *mut std::ffi::c_void {
+        (&(self.indices)).as_kernel_param()
+    }
+}
+
 impl ReduceCudaPlan {
     pub fn from_reduce_plan(
         reduce_plan: ReducePlan,
