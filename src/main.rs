@@ -2,6 +2,7 @@ use cudarc::driver::{CudaDevice, DeviceRepr, DriverError, LaunchAsync, LaunchCon
 use cudarc::nvrtc::Ptx;
 
 mod softmax;
+mod reduce;
 mod tensor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
