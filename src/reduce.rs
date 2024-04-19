@@ -1,4 +1,5 @@
-mod reduce_cuda;
+pub mod reduce_cuda;
+pub mod ops;
 
 use cudarc::driver::{CudaDevice, CudaSlice, DeviceRepr, DriverError, LaunchAsync, LaunchConfig};
 use std::sync::Arc;

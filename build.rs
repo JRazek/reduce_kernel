@@ -163,6 +163,7 @@ mod cuda {
                         .arg("--ptx")
                         .args(["--default-stream", "per-thread"])
                         .args(["--output-directory", &out_dir])
+                        .args(["-std=c++20"])
                         .args(&include_options)
                         .arg(p)
                         .stdout(std::process::Stdio::piped())

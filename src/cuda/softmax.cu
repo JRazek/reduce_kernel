@@ -1,8 +1,7 @@
-#include <array>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
-struct ReduceOp {};
+#include "reduce_kernel.cuh"
 
 template <typename T>
 /**
@@ -13,8 +12,7 @@ template <typename T>
          reduced tensor in the consecutive memory cells.
  * @return
  */
-__device__ auto softmax(T *in, T *out, std::size_t *global_offsets,
-                        const ReduceOp *reduce_op) -> void {
+__device__ auto softmax(T *in, T *out, std::size_t *global_offsets) -> void {
   auto idx = blockIdx.x * blockDim.x + threadIdx.x;
   auto global_offset = global_offsets[idx];
 
@@ -31,6 +29,6 @@ __device__ auto softmax(T *in, T *out, std::size_t *global_offsets,
 extern "C" {
 __global__ void softmax_f32(float *in, float *out, float mul,
                             std::size_t *global_offsets) {
-  softmax(in, out, global_offsets, nullptr);
+  softmax(in, out, global_offsets);
 }
 }
