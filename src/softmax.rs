@@ -6,91 +6,92 @@ use super::tensor::{compute_strided_index, Shape, Tensor};
 
 const PTX_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/softmax.ptx"));
 
-//unsafe impl DeviceRepr for SoftmaxOp {}
-
 pub struct ReduceOpConfig {
     pub reduce_dims: Vec<usize>,
 }
 
+#[derive(Debug, Clone)]
 pub struct ReducePlan {
     indices: Vec<usize>,
 }
 
-pub fn precompute_global_offsets(
-    reduce_op_config: ReduceOpConfig,
-    tensor_shape: Shape,
-) -> ReducePlan {
-    println!("tensor_shape: {:?}", tensor_shape.shape);
-    let mut reduce_dims = reduce_op_config.reduce_dims;
-    reduce_dims.sort();
-    reduce_dims.dedup();
-
-    println!("reduce_dims: {:?}", reduce_dims);
-
-    let reduce_mask = (0..tensor_shape.shape.len())
-        .map(|i| reduce_dims.binary_search(&i).is_ok())
-        .collect::<Vec<bool>>();
-
-    println!("reduce_mask: {:?}", reduce_mask);
-
-    let strides = tensor_shape.compute_strides();
-
-    let non_reduce_tensors_shapes = Shape::new(
-        tensor_shape
-            .shape
-            .iter()
-            .zip(reduce_mask.iter())
-            .map(|(&s_i, &is_reduced)| if is_reduced { 1 } else { s_i })
-            .collect::<Vec<usize>>(),
-    );
-    println!(
-        "non_reduce_tensors_shapes: {:?}",
-        non_reduce_tensors_shapes.shape
-    );
-
-    let non_reduce_strides = non_reduce_tensors_shapes.compute_strides();
-    println!("non_reduce_strides: {:?}", non_reduce_strides);
-
-    let reduce_tensors_shapes = Shape::new(
-        tensor_shape
-            .shape
-            .iter()
-            .zip(reduce_mask.iter())
-            .map(|(&s_i, &is_reduced)| if !is_reduced { 1 } else { s_i })
-            .collect::<Vec<usize>>(),
-    );
-    println!("reduce_tensors_shapes: {:?}", reduce_tensors_shapes.shape);
-
-    let reduce_strides = reduce_tensors_shapes.compute_strides();
-    println!("reduce_strides: {:?}", reduce_strides);
-
-    // for idx = blockDim.x * blockId.x + threadId.x, "idx-th" element corresponds to an index from which it has to fetch data in initial tensor.
-    let mut indices = Vec::with_capacity(non_reduce_strides[0] * reduce_strides[0]);
-
-    let non_reduce_tensor_len = reduce_mul_elements(&non_reduce_tensors_shapes.shape);
-    let reduce_tensor_len = reduce_mul_elements(&reduce_tensors_shapes.shape);
-    println!("non_reduce_tensor_len: {:?}", non_reduce_tensor_len);
-    println!("reduce_tensor_len: {:?}", reduce_tensor_len);
-
-    let global_non_reduce_strides = element_mul(reduce_strides.clone(), &non_reduce_strides);
-
-    for non_reduce_tensor_index in 0..non_reduce_tensor_len {
-        for reduce_tensor_index in 0..reduce_tensor_len {
-            let global_tensor_idx = dot(
-                &compute_strided_index(non_reduce_tensor_index, &non_reduce_strides),
-                &global_non_reduce_strides,
-            ) + dot(
-                &compute_strided_index(reduce_tensor_index, &reduce_strides),
-                &strides, //mul with (1, 1, .., 1) - identity
-            );
-
-            indices.push(global_tensor_idx);
-        }
+impl ReducePlan {
+    pub fn as_cuda_slice(&self, dev: Arc<CudaDevice>) -> Result<CudaSlice<usize>, DriverError> {
+        dev.htod_sync_copy(&self.indices)
     }
 
-    let plan = ReducePlan { indices };
+    pub fn precompute(tensor_shape: Shape, reduce_op_config: ReduceOpConfig) -> ReducePlan {
+        let mut reduce_dims = reduce_op_config.reduce_dims;
+        reduce_dims.sort();
+        reduce_dims.dedup();
 
-    plan
+        println!("reduce_dims: {:?}", reduce_dims);
+
+        let reduce_mask = (0..tensor_shape.shape.len())
+            .map(|i| reduce_dims.binary_search(&i).is_ok())
+            .collect::<Vec<bool>>();
+
+        println!("reduce_mask: {:?}", reduce_mask);
+
+        let strides = tensor_shape.compute_strides();
+
+        let non_reduce_tensors_shapes = Shape::new(
+            tensor_shape
+                .shape
+                .iter()
+                .zip(reduce_mask.iter())
+                .map(|(&s_i, &is_reduced)| if is_reduced { 1 } else { s_i })
+                .collect::<Vec<usize>>(),
+        );
+        println!(
+            "non_reduce_tensors_shapes: {:?}",
+            non_reduce_tensors_shapes.shape
+        );
+
+        let non_reduce_strides = non_reduce_tensors_shapes.compute_strides();
+        println!("non_reduce_strides: {:?}", non_reduce_strides);
+
+        let reduce_tensors_shapes = Shape::new(
+            tensor_shape
+                .shape
+                .iter()
+                .zip(reduce_mask.iter())
+                .map(|(&s_i, &is_reduced)| if !is_reduced { 1 } else { s_i })
+                .collect::<Vec<usize>>(),
+        );
+        println!("reduce_tensors_shapes: {:?}", reduce_tensors_shapes.shape);
+
+        let reduce_strides = reduce_tensors_shapes.compute_strides();
+        println!("reduce_strides: {:?}", reduce_strides);
+
+        // for idx = blockDim.x * blockId.x + threadId.x, "idx-th" element corresponds to an index from which it has to fetch data in initial tensor.
+        let mut indices = Vec::with_capacity(non_reduce_strides[0] * reduce_strides[0]);
+
+        let non_reduce_tensor_len = reduce_mul_elements(&non_reduce_tensors_shapes.shape);
+        let reduce_tensor_len = reduce_mul_elements(&reduce_tensors_shapes.shape);
+        println!("non_reduce_tensor_len: {:?}", non_reduce_tensor_len);
+        println!("reduce_tensor_len: {:?}", reduce_tensor_len);
+
+        let global_non_reduce_strides = element_mul(reduce_strides.clone(), &non_reduce_strides);
+
+        for non_reduce_tensor_index in 0..non_reduce_tensor_len {
+            for reduce_tensor_index in 0..reduce_tensor_len {
+                let global_tensor_idx = dot(
+                    &compute_strided_index(non_reduce_tensor_index, &non_reduce_strides),
+                    &global_non_reduce_strides,
+                ) + dot(
+                    &compute_strided_index(reduce_tensor_index, &reduce_strides),
+                    &strides, //mul with (1, 1, .., 1) - identity
+                );
+
+                indices.push(global_tensor_idx);
+            }
+        }
+
+        let plan = ReducePlan { indices };
+
+        plan
+    }
 }
 
 fn dot(lhs: &Vec<usize>, rhs: &Vec<usize>) -> usize {
@@ -130,11 +131,11 @@ mod tests {
     #[test]
     fn test_plan01() {
         let shape = Shape::from([2, 3, 4]);
-        let ReducePlan { indices } = precompute_global_offsets(
+        let ReducePlan { indices } = ReducePlan::precompute(
+            shape,
             ReduceOpConfig {
                 reduce_dims: vec![0, 2],
             },
-            shape,
         );
         println!("indices: {:?}", indices);
 
@@ -171,11 +172,11 @@ mod tests {
     #[test]
     fn test_plan02() {
         let shape = Shape::from([2, 3, 4]);
-        let ReducePlan { indices } = precompute_global_offsets(
+        let ReducePlan { indices } = ReducePlan::precompute(
+            shape,
             ReduceOpConfig {
                 reduce_dims: vec![1],
             },
-            shape,
         );
         println!("indices: {:?}", indices);
 

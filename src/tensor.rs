@@ -42,17 +42,6 @@ pub(crate) fn compute_strided_index(index: usize, strides: &Vec<usize>) -> Vec<u
     res
 }
 
-pub(crate) fn dot(lhs: &Vec<usize>, rhs: &Vec<usize>) -> usize {
-    lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum()
-}
-
-pub(crate) fn element_mul(lhs: Vec<usize>, rhs: &Vec<usize>) -> Vec<usize> {
-    lhs.into_iter()
-        .zip(rhs.iter())
-        .map(|(l, &r)| l * r)
-        .collect()
-}
-
 impl<const N: usize> From<[usize; N]> for Shape {
     fn from(shape: [usize; N]) -> Self {
         Self {
