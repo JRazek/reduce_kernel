@@ -1,7 +1,18 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
+#include <functional>
+
 #include "reduce_kernel.cuh"
+
+template <typename T> struct Plus {
+  __device__ auto operator()(T a, T b) const -> T { return a + b; }
+};
+
+// TODO - research "atomic max"
+template <typename T> struct Max {
+  __device__ auto operator()(T a, T b) const -> T { return a + b; }
+};
 
 template <typename T>
 /**
@@ -12,11 +23,23 @@ template <typename T>
          reduced tensor in the consecutive memory cells.
  * @return
  */
-__device__ auto softmax(T *in, T *out, std::size_t *global_offsets) -> void {
-  auto idx = blockIdx.x * blockDim.x + threadIdx.x;
-  auto global_offset = global_offsets[idx];
+__device__ auto softmax(const T *in, T *out, const std::size_t *global_offsets)
+    -> void {
 
-  auto exp = std::exp(in[global_offset]);
+  auto tid = threadIdx.x;                           // # in block.
+  auto idx = blockIdx.x * blockDim.x + threadIdx.x; // # in grid.
+  auto tensor_idx = global_offsets[idx];            // offset in data.
+
+  auto x = in[tensor_idx];
+
+  auto max_x = reduce(x, Max<T>{});
+
+  auto e_xi = std::exp(in[idx] - max_x);
+  auto sum = reduce(e_xi, Plus<T>{});
+
+  auto y_i = e_xi / sum;
+
+  out[tensor_idx] = y_i;
 }
 
 #define EXTERN(T, SUFFIX)                                                      \
