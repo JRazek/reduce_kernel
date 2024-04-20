@@ -20,11 +20,11 @@ use super::reduce::reduce_cuda::ReduceOperator;
 
 #[derive(Debug, Clone)]
 pub struct ReducePlan {
-    input_tensor_shape: Shape,
-    output_tensor_shape: Shape,
+    pub(crate) input_tensor_shape: Shape,
+    pub(crate) output_tensor_shape: Shape,
 
-    idx_to_input_offsets: Vec<usize>,  //for initial mapping
-    idx_to_output_offsets: Vec<usize>, //for final mapping
+    pub(crate) idx_to_input_offsets: Vec<usize>, //for initial mapping
+    pub(crate) idx_to_output_offsets: Vec<usize>, //for final mapping
 }
 
 impl ReducePlan {
@@ -32,10 +32,7 @@ impl ReducePlan {
         (*shape) == self.input_tensor_shape
     }
 
-    pub fn precompute(
-        input_tensor_shape: &Shape,
-        mut reduce_dims: Vec<usize>,
-    ) -> Result<ReducePlan, DriverError> {
+    pub fn precompute(input_tensor_shape: &Shape, mut reduce_dims: Vec<usize>) -> ReducePlan {
         reduce_dims.sort();
         reduce_dims.dedup();
 
@@ -89,7 +86,7 @@ impl ReducePlan {
             output_tensor_shape,
         };
 
-        Ok(plan)
+        plan
     }
 }
 
@@ -151,7 +148,7 @@ mod tests {
         let ReducePlan {
             idx_to_input_offsets,
             ..
-        } = ReducePlan::precompute(&tensor_shape, vec![0, 2]).unwrap();
+        } = ReducePlan::precompute(&tensor_shape, vec![0, 2]);
 
         assert_eq!(idx_to_input_offsets[0], 0);
         assert_eq!(idx_to_input_offsets[1], 1);
@@ -190,7 +187,7 @@ mod tests {
         let ReducePlan {
             idx_to_input_offsets,
             ..
-        } = ReducePlan::precompute(&tensor_shape, vec![1]).unwrap();
+        } = ReducePlan::precompute(&tensor_shape, vec![1]);
 
         assert_eq!(idx_to_input_offsets[0], 0);
         assert_eq!(idx_to_input_offsets[1], 4);

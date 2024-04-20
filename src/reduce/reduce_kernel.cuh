@@ -52,8 +52,6 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
 
       shared[tid] = res;
 
-      __syncthreads();
-
       if constexpr (Debug) {
         printf("stride: %d, blockId.y: %d, blockIdx.x: %d, subinput_id: %d, "
                "reduce(shared[%d], "
@@ -61,6 +59,8 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
                s, blockIdx.y, blockIdx.x, grid_id, tid, tid + s, lhs, rhs, res);
       }
     }
+
+    __syncthreads();
   }
 
   if (tid == 0) {
