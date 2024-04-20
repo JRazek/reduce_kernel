@@ -59,7 +59,7 @@ mod test {
     pub fn test_max_large() {
         let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
 
-        const N: usize = 8192;
+        const N: usize = 100_000;
         let mut input_host = vec![0f32; N];
         input_host[N / 2 - 1] = 3f32;
         input_host[0] = 2f32;

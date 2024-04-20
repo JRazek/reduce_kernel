@@ -40,12 +40,19 @@ fn make_steps(
 
     loop {
         let subinputs_in_input = reduce_input_len / reduce_subinput_len;
-        println!("reduce_input_len: {}", reduce_input_len);
-        println!("reduce_subinput_len: {}", reduce_subinput_len);
         assert_eq!(reduce_input_len % reduce_subinput_len, 0); //this should always be true by
                                                                //induction.
 
-        let block_size = MAX_BLOCK_LEN.min(reduce_subinput_len as u32);
+        let optimal_subinput_len = {
+            if reduce_subinput_len.is_power_of_two() {
+                reduce_subinput_len
+            } else {
+                reduce_subinput_len.next_power_of_two()
+            }
+        } as u32;
+
+        let block_size = MAX_BLOCK_LEN.min(optimal_subinput_len);
+        assert!(block_size.is_power_of_two());
 
         let blocks_per_subinput = reduce_subinput_len.div_ceil(block_size as usize) as u32;
 
@@ -70,6 +77,7 @@ fn make_steps(
         reduce_subinput_len = blocks_per_subinput as usize;
     }
 
+    println!("steps: {:?}", steps);
     Ok(steps)
 }
 
@@ -138,7 +146,7 @@ where
 {
     //currently only for 2^n inputs.
 
-    assert!(reduce_input_len.is_power_of_two());
+    //    assert!(reduce_input_len.is_power_of_two());
     let workspace = reduce_input;
     let kernel = load_and_get_kernel(&dev, reduce_operator)?;
 
