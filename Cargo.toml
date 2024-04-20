@@ -12,6 +12,7 @@ cudarc = { git = "https://github.com/coreylowman/cudarc.git" }
 [features]
 cuda-version-from-build-system = ["cudarc/cuda-version-from-build-system"]
 cuda-12020 = ["cudarc/cuda-12020"]
+ci-check = []
 
 [build-dependencies]
 glob = { version = "0.3.1" }
