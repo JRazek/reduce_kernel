@@ -15,16 +15,6 @@ struct ReduceStep {
     reduce_subinput_len: u32,
 }
 
-#[derive(Debug, Clone)]
-pub struct ReduceCudaPlan<T>
-where
-    T: DeviceRepr,
-{
-    workspace_dev: CudaSlice<T>,
-
-    steps: Vec<ReduceStep>,
-}
-
 const MAX_GRID_LEN: u32 = 1 << 31 - 1;
 const MAX_BLOCK_LEN: u32 = 1024;
 
@@ -83,28 +73,6 @@ fn make_steps(
     Ok(steps)
 }
 
-impl<T> ReduceCudaPlan<T>
-where
-    T: DeviceRepr + ValidAsZeroBits,
-{
-    pub fn precompute(
-        reduce_input: &CudaSlice<T>,
-        mut reduce_input_len: usize,
-        mut reduce_subinput_len: usize, //how many subslices to reduce. Each one will have separate output.
-        dev: Arc<CudaDevice>,
-    ) -> Result<ReduceCudaPlan<T>, Box<dyn std::error::Error>> {
-        let steps = make_steps(reduce_input_len, reduce_subinput_len)?;
-        let workspace_dev = dev.alloc_zeros(reduce_input_len)?;
-
-        let plan = ReduceCudaPlan {
-            workspace_dev,
-            steps,
-        };
-
-        Ok(plan)
-    }
-}
-
 pub(crate) unsafe trait ReduceOperator<T>: Kernel<T>
 where
     T: DeviceRepr,
@@ -130,6 +98,7 @@ where
 
     let type_len = std::mem::size_of::<f32>() as u32;
 
+    //TODO this should probably also be in a plan
     let steps = make_steps(reduce_input_len, reduce_subinput_len)?;
 
     let last_step_idx = steps.len() - 1;
@@ -157,8 +126,6 @@ where
         unsafe {
             kernel.clone().launch(cfg, params)?;
         }
-
-        //        std::thread::sleep(std::time::Duration::from_secs(1));
 
         dev.synchronize()?;
         println!("next step\n\n\n");

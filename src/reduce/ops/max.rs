@@ -8,7 +8,6 @@ use std::sync::Arc;
 use crate::tensor::{Shape, Tensor};
 
 use crate::kernel::Kernel;
-use crate::reduce::reduce_cuda::ReduceCudaPlan;
 use crate::reduce::reduce_cuda::ReduceOperator;
 
 const PTX_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/max.ptx"));
