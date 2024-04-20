@@ -157,6 +157,8 @@ where
             &workspace
         };
 
+        println!("launching kernel with cfg: {:?}", cfg);
+
         let params = (&workspace, out, step.reduce_subinput_len);
 
         unsafe {

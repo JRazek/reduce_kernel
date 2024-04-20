@@ -61,6 +61,7 @@ mod test {
         const N: usize = 10;
         let mut input_host = vec![0f32; N];
         input_host[N / 2 - 1] = 1.0;
+        println!("{:?}", input_host);
 
         let input_dev = cuda_dev
             .htod_sync_copy(&input_host)
