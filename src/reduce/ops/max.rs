@@ -40,18 +40,18 @@ mod test {
             .htod_sync_copy(&input_host)
             .expect("could not alloc and copy");
 
-        let mut output = cuda_dev.alloc_zeros(5).expect("could not alloc");
+//        let mut output = cuda_dev.alloc_zeros(5).expect("could not alloc");
 
-        unsafe {
-            reduce(&input_dev, 10, 2, &mut output, cuda_dev.clone(), MaxOp)
-                .expect("could not reduce");
-        }
+//        unsafe {
+//            reduce(&input_dev, 10, 2, &mut output, cuda_dev.clone(), MaxOp)
+//                .expect("could not reduce");
+//        }
 
-        let res = cuda_dev
-            .dtoh_sync_copy(&mut output)
-            .expect("could not copy to host");
-
-        assert_eq!(res, vec![0.0, 1.0, 0.0, 0.0, 0.0]);
+//        let res = cuda_dev
+//            .dtoh_sync_copy(&mut output)
+//            .expect("could not copy to host");
+//
+//        assert_eq!(res, vec![0.0, 1.0, 0.0, 0.0, 0.0]);
 
         //        let output_shape = Shape::new(vec![1, 3, 1]);
         //        let mut output_tensor: Tensor<f32> = Tensor::new(

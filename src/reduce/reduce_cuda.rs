@@ -6,50 +6,88 @@ use cudarc::driver::{
 use cudarc::nvrtc::Ptx;
 use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy)]
+struct ReduceStep {
+    block_size: u32,
+    total_blocks_count: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct ReduceCudaPlan<T>
 where
     T: DeviceRepr,
 {
-    pub(crate) workspace_dev: CudaSlice<T>,
+    workspace_dev: CudaSlice<T>,
 
-    //for initial reduction
-    block_len: u32,
-    blocks_per_reduce_tensor_count: u32,
-    blocks_total: u32,
+    steps: Vec<ReduceStep>,
+}
+
+const MAX_GRID_LEN: u32 = 1 << 31 - 1;
+const MAX_BLOCK_LEN: u32 = 1 << 10;
+
+fn make_steps(
+    mut reduce_input_len: usize,
+    mut reduce_subinput_len: usize,
+) -> Result<Vec<ReduceStep>, Box<dyn std::error::Error>> {
+    if reduce_input_len % reduce_subinput_len != 0 {
+        return Err("reduce_input_len must be divisible by reduce_subinput_len!".into());
+    }
+
+    let mut steps = Vec::new();
+
+    let output_len = reduce_input_len / reduce_subinput_len;
+
+    loop {
+        let subinputs_in_input = reduce_input_len / reduce_subinput_len;
+        assert_eq!(reduce_input_len % reduce_subinput_len, 0); //this should always be true by
+                                                               //induction.
+
+        let block_size = MAX_BLOCK_LEN.min(reduce_subinput_len as u32);
+
+        let blocks_per_subinput = reduce_subinput_len.div_ceil(block_size as usize) as u32;
+
+        let total_blocks_count = blocks_per_subinput * subinputs_in_input as u32;
+
+        steps.push(ReduceStep {
+            block_size,
+            total_blocks_count,
+        });
+
+        //TODO: prove correctness:
+        //total_blocks_count_{i+1} < total_blocks_count_{i}
+        if total_blocks_count == output_len as u32 {
+            assert_eq!(blocks_per_subinput, 1);
+            break;
+        }
+
+        assert!(total_blocks_count > output_len as u32);
+
+        reduce_input_len = total_blocks_count as usize;
+        reduce_subinput_len = blocks_per_subinput as usize;
+    }
+
+    Ok(steps)
 }
 
 impl<T> ReduceCudaPlan<T>
 where
     T: DeviceRepr + ValidAsZeroBits,
 {
-    pub unsafe fn precompute(
+    pub fn precompute(
         reduce_input: &CudaSlice<T>,
-        reduce_input_len: usize,
-        reduce_sub_input_len: usize, //how many subslices to reduce. Each one will have separate output.
+        mut reduce_input_len: usize,
+        mut reduce_subinput_len: usize, //how many subslices to reduce. Each one will have separate output.
         dev: Arc<CudaDevice>,
-    ) -> Result<ReduceCudaPlan<T>, DriverError> {
-        const MAX_GRID_LEN: u32 = 2 << 31 - 1;
-        const MAX_BLOCK_LEN: u32 = 2 << 10;
+    ) -> Result<ReduceCudaPlan<T>, Box<dyn std::error::Error>> {
+        let steps = make_steps(reduce_input_len, reduce_subinput_len)?;
+        let workspace_dev = dev.alloc_zeros(reduce_input_len)?;
 
-        let block_len: usize = MAX_BLOCK_LEN.min(reduce_sub_input_len as u32) as usize;
-        let blocks_per_reduce_tensor_count = (reduce_sub_input_len.div_ceil(block_len)) as u32;
-
-        let ouput_len = reduce_input_len / reduce_sub_input_len;
-        assert_eq!(reduce_input_len % reduce_sub_input_len, 0);
-
-        //each sub_input will first be reduced to blocks_per_reduce_tensor_count values.
-        //we need to store them somewhere and then reduce again to a single value.
-        let workspace_len = blocks_per_reduce_tensor_count * ouput_len as u32;
-
-        let workspace_dev = dev.alloc_zeros(workspace_len as usize)?;
-
-        Ok(ReduceCudaPlan {
+        let plan = ReduceCudaPlan {
             workspace_dev,
-            block_len: block_len as u32,
-            blocks_per_reduce_tensor_count,
-            blocks_total: workspace_len,
-        })
+            steps,
+        };
+
+        Ok(plan)
     }
 }
 
@@ -87,6 +125,7 @@ pub(crate) unsafe fn reduce<Op>(
     reduce_input: &CudaSlice<f32>,
     reduce_input_len: usize,
     reduce_subinput_len: usize,
+    workspace: &mut CudaSlice<f32>, //requires workspace to be at least of size input_len / reduce_sub_input_len
     output: &mut CudaSlice<f32>, //requires output to be at least of size input_len / reduce_sub_input_len
     dev: Arc<CudaDevice>,
     reduce_operator: Op,
@@ -117,15 +156,19 @@ where
 
     let output_reborrow = &mut *output;
 
-    kernel.launch(step1_cfg, (reduce_input, output_reborrow, reduce_input_len))?;
+    //    kernel.launch(step1_cfg, (reduce_input, workspace, reduce_input_len))?;
+    //
+    //    let output_dev = dev.dtoh_sync_copy(output)?;
+    //
+    //    println!("{:?}", output_dev);
 
-    let output_dev = dev.dtoh_sync_copy(output)?;
+    //now repeat for all results from each block corresponding to a subinput.
 
-    println!("{:?}", output_dev);
-
-    //    let input = &reduce_input.data;
-    //    let workspace = &reduce_plan.workspace_dev;
-    //    let global_indices = &reduce_plan.idx_to_input_offset;
+    //    let cfg2 = LaunchConfig {
+    //        grid_dim: (reduce_input_len / reduce_subinput_len, 1, 1),
+    //        block_dim: (blocks_per_reduce_tensor_count, 1, 1),
+    //        shared_mem_bytes: type_len * reduce_plan.block_len,
+    //    };
     //
     //    let params1 = (input, workspace, global_indices);
     //
@@ -154,4 +197,27 @@ where
     todo!()
 }
 
-//tests only through other implementations - max, sum etc.
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[test]
+    fn test_steps_creation() {
+        let input_len = 10_000_000;
+        let subinput_len = 2_000;
+
+        let output_len = input_len / subinput_len;
+
+        match make_steps(input_len, subinput_len).unwrap().as_slice() {
+            [ReduceStep {
+                block_size: 1024, //MAX_BLOCK_LEN
+                total_blocks_count: 10_000,
+            }, ReduceStep {
+                block_size: 2,
+                total_blocks_count: output_len,
+            }] => {}
+            _ => panic!(),
+        }
+    }
+}
