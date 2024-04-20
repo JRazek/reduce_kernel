@@ -1,11 +1,17 @@
 #include <concepts>
+#include <cstdint>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
 template <typename T, typename Op>
-__device__ auto reduce(const T *in, T *out, Op reduce_op) -> void {
+__device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
+                       Op reduce_op) -> void {
   auto tid = threadIdx.x;                           // # in block.
   auto idx = blockIdx.x * blockDim.x + threadIdx.x; // # in grid.
+
+  if (idx >= reduce_input_len) {
+    return;
+  }
 
   // YOU STILL NEED TO CHECK FOR OUT OF BOUNDS KERNELS!
 

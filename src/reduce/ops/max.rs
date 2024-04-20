@@ -9,31 +9,17 @@ use std::sync::Arc;
 use crate::tensor::{Shape, Tensor};
 
 use crate::reduce::reduce_cuda::ReduceCudaPlan;
+use crate::reduce::reduce_cuda::ReduceOperator;
 
 const PTX_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/max.ptx"));
 
-pub fn max(
-    input_tensor: &Tensor<f32>,
-    output_tensor: &mut Tensor<f32>,
-    dev: Arc<CudaDevice>,
-    reduce_plan: &ReduceCudaPlan<f32>,
-) -> Result<Tensor<f32>, Box<dyn std::error::Error>> {
-    let tensor_len = input_tensor.shape.elements_count() as u32;
+impl ReduceOperator<f32> for MaxOp {
+    const MODULE_NAME: &'static str = "kernel_ops";
+    const FN_NAME: &'static str = "max_reduce_f32";
 
-    assert!((1..32).contains(&tensor_len));
-
-    if !dev.has_func("kernel_ops", "max_reduce_f32") {
-        let ptx = Ptx::from_src(PTX_SRC);
-        dev.load_ptx(ptx, "kernel_ops", &["max_reduce_f32"])?;
+    fn ptx(&self) -> Ptx {
+        Ptx::from_src(PTX_SRC)
     }
-
-    let max_kernel = dev
-        .get_func("kernel_ops", "max_reduce_f32")
-        .ok_or("could not load max kernel")?;
-
-    //    let remainder_block_len = reduced_subtensor_len % block_len;
-
-    todo!()
 }
 
 #[cfg(test)]
@@ -41,28 +27,32 @@ mod test {
 
     use super::*;
 
+    use crate::reduce::reduce_cuda::reduce;
+
     #[test]
     pub fn test_max_small() {
         let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
 
-        let mut data = [0f32; 24];
+        let mut input_host = [0f32; 10];
+        input_host[2] = 1.0;
 
-        data[0] = 1f32;
-        data[12] = 1f32;
+        let input_dev = cuda_dev
+            .htod_sync_copy(&input_host)
+            .expect("could not alloc and copy");
 
-        data[4] = 2f32;
-        data[15] = 2f32;
-        let input_tensor = Tensor::new(
-            cuda_dev.clone(),
-            cuda_dev.htod_sync_copy(&data).unwrap(),
-            Shape::new(vec![2, 3, 4]),
-        );
+        let mut output = cuda_dev.alloc_zeros(5).expect("could not alloc");
 
-        //        let reduce_plan = ReducePlan::precompute(ReduceConfig {
-        //            tensor_shape: input_tensor.shape.clone(),
-        //            reduce_dims: vec![0, 2],
-        //        });
-        //
+        unsafe {
+            reduce(&input_dev, 10, 2, &mut output, cuda_dev.clone(), MaxOp)
+                .expect("could not reduce");
+        }
+
+        let res = cuda_dev
+            .dtoh_sync_copy(&mut output)
+            .expect("could not copy to host");
+
+        assert_eq!(res, vec![0.0, 1.0, 0.0, 0.0, 0.0]);
+
         //        let output_shape = Shape::new(vec![1, 3, 1]);
         //        let mut output_tensor: Tensor<f32> = Tensor::new(
         //            cuda_dev.clone(),

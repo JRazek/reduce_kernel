@@ -1,4 +1,5 @@
 #include <cooperative_groups/reduce.h>
+#include <cstdint>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
@@ -10,13 +11,16 @@ template <typename T> struct MaxOp {
 };
 
 // calculates maximum in each block and stores it in out[blockIdx.x]
-template <typename T> __device__ auto max_reduce(const T *in, T *out) -> void {
-  reduce<T, MaxOp<T>>(in, out, MaxOp<T>{});
+template <typename T>
+__device__ auto max_reduce(const T *in, T *out, std::uint32_t reduce_input_len)
+    -> void {
+  reduce<T, MaxOp<T>>(in, out, reduce_input_len, MaxOp<T>{});
 }
 
 #define EXTERN(T, SUFFIX)                                                      \
-  extern "C" __global__ void max_reduce_##SUFFIX(T *in, T *out) {              \
-    max_reduce(in, out);                                                       \
+  extern "C" __global__ void max_reduce_##SUFFIX(                              \
+      T *in, T *out, std::uint32_t reduce_input_len) {                         \
+    max_reduce(in, out, reduce_input_len);                                     \
   }
 
 // actually they are not always f32/f64 by cpp standard but for simplicity -
