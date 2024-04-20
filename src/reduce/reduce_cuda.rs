@@ -103,7 +103,7 @@ where
     }
 }
 
-pub trait ReduceOperator<T>
+pub(crate) trait ReduceOperator<T>
 where
     T: DeviceRepr,
 {

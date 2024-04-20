@@ -1,4 +1,3 @@
-#[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct MaxOp;
 
