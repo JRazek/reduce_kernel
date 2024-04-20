@@ -9,14 +9,15 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
   auto tid = threadIdx.x;                           // # in block.
   auto idx = blockIdx.x * blockDim.x + threadIdx.x; // # in grid.
 
+  printf("in[%d]: %d\n", idx, in[idx]);
+
   if (idx >= reduce_input_len) {
     return;
   }
 
-  // YOU STILL NEED TO CHECK FOR OUT OF BOUNDS KERNELS!
-
   extern __shared__ T shared[];
   shared[tid] = in[idx];
+  printf("shared[tid]: %d\n", shared[tid]);
 
   __syncthreads();
 

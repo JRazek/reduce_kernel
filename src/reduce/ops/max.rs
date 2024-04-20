@@ -40,44 +40,43 @@ mod test {
             .htod_sync_copy(&input_host)
             .expect("could not alloc and copy");
 
-//        let mut output = cuda_dev.alloc_zeros(5).expect("could not alloc");
+        let mut output = cuda_dev.alloc_zeros(5).expect("could not alloc");
 
-//        unsafe {
-//            reduce(&input_dev, 10, 2, &mut output, cuda_dev.clone(), MaxOp)
-//                .expect("could not reduce");
-//        }
+        unsafe {
+            reduce(input_dev, 10, 2, &mut output, cuda_dev.clone(), MaxOp)
+                .expect("could not reduce");
+        }
 
-//        let res = cuda_dev
-//            .dtoh_sync_copy(&mut output)
-//            .expect("could not copy to host");
-//
-//        assert_eq!(res, vec![0.0, 1.0, 0.0, 0.0, 0.0]);
+        let res = cuda_dev
+            .dtoh_sync_copy(&mut output)
+            .expect("could not copy to host");
 
-        //        let output_shape = Shape::new(vec![1, 3, 1]);
-        //        let mut output_tensor: Tensor<f32> = Tensor::new(
-        //            cuda_dev.clone(),
-        //            cuda_dev
-        //                .alloc_zeros(output_shape.elements_count() as usize)
-        //                .expect("could not alloc"),
-        //            output_shape,
-        //        );
-        //
-        //        let reduce_cuda_plan: ReduceCudaPlan<f32> =
-        //            ReduceCudaPlan::precompute(reduce_plan, cuda_dev.clone())
-        //                .expect("could not create reduce cuda plan");
-        //
-        //        let tensor = max(
-        //            &input_tensor,
-        //            &mut output_tensor,
-        //            cuda_dev.clone(),
-        //            &reduce_cuda_plan,
-        //        )
-        //        .unwrap();
-        //
-        //        let res = tensor.as_vec().unwrap();
-        //
-        //        println!("{:?}", res);
-        //
-        panic!();
+        assert_eq!(res, vec![0.0, 1.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    pub fn test_max_large() {
+        let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
+
+        const N: usize = 10;
+        let mut input_host = vec![0f32; N];
+        input_host[N / 2 - 1] = 1.0;
+
+        let input_dev = cuda_dev
+            .htod_sync_copy(&input_host)
+            .expect("could not alloc and copy");
+
+        let mut output = cuda_dev.alloc_zeros(2).expect("could not alloc");
+
+        unsafe {
+            reduce(input_dev, N, N / 2, &mut output, cuda_dev.clone(), MaxOp)
+                .expect("could not reduce");
+        }
+
+        let res = cuda_dev
+            .dtoh_sync_copy(&mut output)
+            .expect("could not copy to host");
+
+        assert_eq!(res, vec![1f32, 0.0]);
     }
 }

@@ -10,6 +10,7 @@ use std::sync::Arc;
 struct ReduceStep {
     block_size: u32,
     total_blocks_count: u32,
+    reduce_subinput_len: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +40,8 @@ fn make_steps(
 
     loop {
         let subinputs_in_input = reduce_input_len / reduce_subinput_len;
+        println!("reduce_input_len: {}", reduce_input_len);
+        println!("reduce_subinput_len: {}", reduce_subinput_len);
         assert_eq!(reduce_input_len % reduce_subinput_len, 0); //this should always be true by
                                                                //induction.
 
@@ -51,6 +54,7 @@ fn make_steps(
         steps.push(ReduceStep {
             block_size,
             total_blocks_count,
+            reduce_subinput_len: reduce_subinput_len as u32,
         });
 
         //TODO: prove correctness:
@@ -122,79 +126,45 @@ where
 }
 
 pub(crate) unsafe fn reduce<Op>(
-    reduce_input: &CudaSlice<f32>,
+    reduce_input: CudaSlice<f32>, //acts as workspace as well.
     reduce_input_len: usize,
     reduce_subinput_len: usize,
-    workspace: &mut CudaSlice<f32>, //requires workspace to be at least of size input_len / reduce_sub_input_len
     output: &mut CudaSlice<f32>, //requires output to be at least of size input_len / reduce_sub_input_len
     dev: Arc<CudaDevice>,
     reduce_operator: Op,
-) -> Result<Tensor<f32>, Box<dyn std::error::Error>>
+) -> Result<(), Box<dyn std::error::Error>>
 where
     Op: ReduceOperator<f32>,
 {
-    let subinputs = reduce_input_len / reduce_subinput_len;
-    assert!(reduce_input_len % reduce_subinput_len == 0);
-
+    let workspace = reduce_input;
     let kernel = load_and_get_kernel(&dev, reduce_operator)?;
 
     let type_len = std::mem::size_of::<f32>() as u32;
 
-    const MAX_BLOCK_LEN: u32 = 32;
+    let steps = make_steps(reduce_input_len, reduce_subinput_len)?;
 
-    let first_step_block_len: u32 = MAX_BLOCK_LEN.min(reduce_subinput_len as u32);
-    let blocks_per_reduce_subinput_count =
-        (reduce_subinput_len.div_ceil(first_step_block_len as usize)) as u32;
+    let last_step_idx = steps.len() - 1;
+    for (i, step) in steps.into_iter().enumerate() {
+        let cfg = LaunchConfig {
+            grid_dim: (step.total_blocks_count, 1, 1),
+            block_dim: (step.block_size, 1, 1),
+            shared_mem_bytes: type_len * step.block_size,
+        };
 
-    let step1_blocks_total = blocks_per_reduce_subinput_count * subinputs as u32;
+        let out = if i == last_step_idx {
+            &*output
+        } else {
+            &workspace
+        };
 
-    let step1_cfg = LaunchConfig {
-        grid_dim: (step1_blocks_total, 1, 1),
-        block_dim: (first_step_block_len, 1, 1),
-        shared_mem_bytes: type_len * first_step_block_len,
-    };
+        let params = (&workspace, out, step.reduce_subinput_len);
 
-    let output_reborrow = &mut *output;
+        unsafe {
+            kernel.clone().launch(cfg, params)?;
+        }
+    }
 
-    //    kernel.launch(step1_cfg, (reduce_input, workspace, reduce_input_len))?;
-    //
-    //    let output_dev = dev.dtoh_sync_copy(output)?;
-    //
-    //    println!("{:?}", output_dev);
-
-    //now repeat for all results from each block corresponding to a subinput.
-
-    //    let cfg2 = LaunchConfig {
-    //        grid_dim: (reduce_input_len / reduce_subinput_len, 1, 1),
-    //        block_dim: (blocks_per_reduce_tensor_count, 1, 1),
-    //        shared_mem_bytes: type_len * reduce_plan.block_len,
-    //    };
-    //
-    //    let params1 = (input, workspace, global_indices);
-    //
-    //    //these 2 become now the new parameters for reduction.
-    //    let non_reduce_tensor_count = reduce_plan
-    //        .reduce_plan
-    //        .non_reduce_tensor_shape
-    //        .elements_count();
-    //    let blocks_per_reduce_tensor_count = reduce_plan.blocks_per_reduce_tensor_count;
-    //
-    //    let cfg2 = LaunchConfig {
-    //        grid_dim: (non_reduce_tensor_count, 1, 1),
-    //        block_dim: (blocks_per_reduce_tensor_count, 1, 1),
-    //        shared_mem_bytes: type_len * reduce_plan.block_len,
-    //    };
-    //
-    //    let output_tensor = &output.data;
-
-    //    let params2 = (workspace, output_tensor, global_indices);
-    //
-    //    unsafe {
-    //        kernel.launch(cfg1, params1)?;
-    //        kernel.launch(cfg2, params2)?;
-    //    }
-
-    todo!()
+    Ok(())
 }
 
 #[cfg(test)]
@@ -209,15 +179,18 @@ mod test {
 
         let output_len = input_len / subinput_len;
 
-        match make_steps(input_len, subinput_len).unwrap().as_slice() {
+        let steps = make_steps(input_len, subinput_len).unwrap();
+        match steps.as_slice() {
             [ReduceStep {
                 block_size: 1024, //MAX_BLOCK_LEN
                 total_blocks_count: 10_000,
+                reduce_subinput_len: 2_000,
             }, ReduceStep {
                 block_size: 2,
                 total_blocks_count: output_len,
+                reduce_subinput_len: 2,
             }] => {}
-            _ => panic!(),
+            _ => panic!("incorrect steps: {:?}", steps),
         }
     }
 }
