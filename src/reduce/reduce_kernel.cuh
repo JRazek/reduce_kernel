@@ -2,18 +2,18 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
-// template <typename >
-// concept ReduceOp = requires(T a, T b) {
-//   { T(a, b) } -> std::same_as<T>;
-// };
-
 template <typename T, typename Op>
-__device__ auto reduce(T in, const Op reduce_op) -> T {
+__device__ auto reduce(const T *in, T *out, const std::size_t *global_offsets,
+                       Op reduce_op) -> void {
   auto tid = threadIdx.x;                           // # in block.
   auto idx = blockIdx.x * blockDim.x + threadIdx.x; // # in grid.
 
+  // get rid of global offsets here, apply mapping kernel before calling reduce
+  // kernel (host level).
+  auto tensor_idx = global_offsets[idx]; // offset in data.
+
   extern __shared__ T shared[];
-  shared[tid] = in;
+  shared[tid] = in[tensor_idx];
 
   __syncthreads();
 
@@ -24,11 +24,8 @@ __device__ auto reduce(T in, const Op reduce_op) -> T {
     __syncthreads();
   }
 
-  // broadcast should happen from the first thread of a block.
+  out[blockIdx.x] = shared[0];
 
-  auto first_block_thread = blockIdx.x * blockDim.x;
-
-  printf("first_block_thread: %d\n", first_block_thread);
-  return shared[first_block_thread]; // is broadcast happening implicitly here
-                                     // or I need to use sth else?
+  // when done with the second step, apply mapping kernel again in reverse
+  // direction (again host side).
 }

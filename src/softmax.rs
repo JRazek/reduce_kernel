@@ -13,7 +13,7 @@ pub trait SoftmaxKernelDtype: DeviceRepr {}
 pub fn softmax(
     tensor: Tensor<f32>,
     dev: Arc<CudaDevice>,
-    reduce_plan: &ReduceCudaPlan,
+    reduce_plan: &ReduceCudaPlan<f32>,
 ) -> Result<Tensor<f32>, Box<dyn std::error::Error>> {
     assert_eq!(tensor.shape, reduce_plan.reduce_plan.tensor_shape);
 
@@ -86,7 +86,7 @@ mod test {
             reduce_dims: vec![0, 2],
         });
 
-        println!("indices: {:?}", reduce_plan.indices);
+        println!("indices: {:?}", reduce_plan.idx_to_input_offset);
 
         let reduce_cuda_plan = ReduceCudaPlan::from_reduce_plan(reduce_plan, cuda_dev.clone())
             .expect("could not create reduce cuda plan");

@@ -15,7 +15,9 @@ pub struct ReduceConfig {
 pub struct ReducePlan {
     pub(crate) tensor_shape: Shape,
     pub(crate) reduce_tensors_shape: Shape,
-    pub(crate) indices: Vec<usize>,
+    pub(crate) non_reduce_tensor_shape: Shape,
+    pub(crate) idx_to_input_offset: Vec<usize>,
+    pub(crate) idx_to_output_offset_2nd_step: Vec<usize>,
 }
 
 impl ReducePlan {
@@ -34,7 +36,7 @@ impl ReducePlan {
 
         let strides = tensor_shape.compute_strides();
 
-        let non_reduce_tensors_shapes = Shape::new(
+        let non_reduce_tensor_shape = Shape::new(
             tensor_shape
                 .shape
                 .iter()
@@ -43,7 +45,7 @@ impl ReducePlan {
                 .collect::<Vec<usize>>(),
         );
 
-        let non_reduce_strides = non_reduce_tensors_shapes.compute_strides();
+        let non_reduce_strides = non_reduce_tensor_shape.compute_strides();
 
         let reduce_tensors_shape = Shape::new(
             tensor_shape
@@ -57,31 +59,38 @@ impl ReducePlan {
         let reduce_strides = reduce_tensors_shape.compute_strides();
 
         // for idx = blockDim.x * blockId.x + threadId.x, "idx-th" element corresponds to an index from which it has to fetch data in initial tensor.
-        let mut indices = Vec::with_capacity(non_reduce_strides[0] * reduce_strides[0]);
+        let mut idx_to_input_offset = Vec::with_capacity(non_reduce_strides[0] * reduce_strides[0]);
+        let mut idx_to_output_offset_2nd_step = Vec::with_capacity(non_reduce_strides[0]);
 
-        let non_reduce_tensor_len = reduce_mul_elements(&non_reduce_tensors_shapes.shape);
+        let non_reduce_tensor_len = reduce_mul_elements(&non_reduce_tensor_shape.shape);
         let reduce_tensor_len = reduce_mul_elements(&reduce_tensors_shape.shape);
 
         let global_non_reduce_strides = element_mul(reduce_strides.clone(), &non_reduce_strides);
 
         for non_reduce_tensor_index in 0..non_reduce_tensor_len {
-            for reduce_tensor_index in 0..reduce_tensor_len {
-                let global_tensor_idx = dot(
-                    &compute_strided_index(non_reduce_tensor_index, &non_reduce_strides),
-                    &global_non_reduce_strides,
-                ) + dot(
-                    &compute_strided_index(reduce_tensor_index, &reduce_strides),
-                    &strides, //mul with (1, 1, .., 1) - identity
-                );
+            let non_reduce_strided_index =
+                compute_strided_index(non_reduce_tensor_index, &non_reduce_strides);
 
-                indices.push(global_tensor_idx);
+            let output_offset = dot(&non_reduce_strided_index, &non_reduce_strides);
+            idx_to_output_offset_2nd_step.push(output_offset);
+
+            for reduce_tensor_index in 0..reduce_tensor_len {
+                let input_offset = dot(&non_reduce_strided_index, &global_non_reduce_strides)
+                    + dot(
+                        &compute_strided_index(reduce_tensor_index, &reduce_strides),
+                        &strides,
+                    );
+
+                idx_to_input_offset.push(input_offset);
             }
         }
 
         let plan = ReducePlan {
-            indices,
+            idx_to_input_offset,
             tensor_shape,
             reduce_tensors_shape,
+            non_reduce_tensor_shape,
+            idx_to_output_offset_2nd_step,
         };
 
         plan
@@ -109,7 +118,10 @@ mod tests {
     #[test]
     fn test_plan01() {
         let tensor_shape = Shape::from([2, 3, 4]);
-        let ReducePlan { indices, .. } = ReducePlan::precompute(ReduceConfig {
+        let ReducePlan {
+            idx_to_input_offset: indices,
+            ..
+        } = ReducePlan::precompute(ReduceConfig {
             tensor_shape,
             reduce_dims: vec![0, 2],
         });
@@ -148,7 +160,10 @@ mod tests {
     #[test]
     fn test_plan02() {
         let tensor_shape = Shape::from([2, 3, 4]);
-        let ReducePlan { indices, .. } = ReducePlan::precompute(ReduceConfig {
+        let ReducePlan {
+            idx_to_input_offset: indices,
+            ..
+        } = ReducePlan::precompute(ReduceConfig {
             tensor_shape,
             reduce_dims: vec![1],
         });
