@@ -4,6 +4,8 @@
 #include <cuda_runtime_api.h>
 #include <math.h>
 
+constexpr auto Debug = true;
+
 template <typename T, typename Op>
 __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
                        Op reduce_op) -> void {
@@ -13,48 +15,52 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
 
   auto grid_id = subinput_id + reduce_input_len * blockIdx.y; // in entire input
 
+  if constexpr (Debug) {
+    if (grid_id == 0) {
+      printf("input_addr: %p\n", in);
+      printf("output_addr: %p\n", out);
+    }
+  }
+
   // in each gridDim.x, it may happen, that for gridId.y==n and gridId.y==n+1,
   // ending and starting grid_id will coincide. Also to make sure that no out of
   // bound access happens, this is used.
   // This will lead to branch divergence only on boundaries.
   if (subinput_id >= reduce_input_len) {
-    //    printf("thread with subinput_id: %d, on blockIdx.x: %d, and blockIdy.y
-    //    %d, "
-    //           "exitted\n",
-    //           subinput_id, blockIdx.x, blockIdx.y);
+    if constexpr (Debug) {
+      printf(
+          "thread with subinput_id: %d, on blockIdx.x: %d, and blockIdy.y: %d "
+          "exitted\n",
+          subinput_id, blockIdx.x, blockIdx.y);
+    }
     return;
   }
 
-  //  printf("blockDim.x: %d\n", blockDim.x);
-  //  printf("thread with subinput_id: %d, on blockIdx.x: %d, and blockIdy.y %d,
-  //  "
-  //         "passed\n",
-  //         subinput_id, blockIdx.x, blockIdx.y);
-
   extern __shared__ T shared[];
   shared[tid] = in[grid_id];
-  //  printf("in[%d]: %f\n", grid_id, in[grid_id]);
 
-  __syncthreads();
-
-  for (auto s =
-           static_cast<std::uint32_t>(ceil(static_cast<float>(blockDim.x) / 2));
-       s > 0; s >>= 1) {
+  for (auto s = blockDim.x / 2; s > 0; s >>= 1) {
     if (tid < s && subinput_id + s < reduce_input_len) {
       auto res = reduce_op(shared[tid], shared[tid + s]);
       shared[tid] = res;
 
-      //      printf("reduce(shared[%d], shared[%d]): %f\n", tid, tid + s, res);
-    }
+      __syncthreads();
 
-    __syncthreads();
+      if constexpr (Debug) {
+        printf("stride: %d, blockId.y: %d, blockIdx.x: %d, subinput_id: %d, "
+               "reduce(shared[%d], "
+               "shared[%d]): %f\n",
+               s, blockIdx.y, blockIdx.x, grid_id, tid, tid + s, res);
+      }
+    }
   }
 
-  // https://stackoverflow.com/a/9587804/14508019
-  // its undefined which thread actually writes to this cell, but regardless of
-  // that, the value will be the same.
-  out[blockIdx.y] = shared[0];
-  //  if (blockIdx.x == 0) {
-  //    printf("out[%d]: %f\n", blockIdx.y, out[blockIdx.y]);
-  //  }
+  if (tid == 0) {
+    auto out_id = blockIdx.x + gridDim.x * blockIdx.y;
+    out[out_id] = shared[0];
+
+    if constexpr (Debug) {
+      printf("saving in out[%d]: %f\n", out_id, shared[0]);
+    }
+  }
 }

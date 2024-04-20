@@ -24,7 +24,7 @@ where
 }
 
 const MAX_GRID_LEN: u32 = 1 << 31 - 1;
-const MAX_BLOCK_LEN: u32 = 1 << 10;
+const MAX_BLOCK_LEN: u32 = 1024;
 
 fn make_steps(
     mut reduce_input_len: usize,
@@ -136,6 +136,9 @@ pub(crate) unsafe fn reduce<Op>(
 where
     Op: ReduceOperator<f32>,
 {
+    //currently only for 2^n inputs.
+
+    assert!(reduce_input_len.is_power_of_two());
     let workspace = reduce_input;
     let kernel = load_and_get_kernel(&dev, reduce_operator)?;
 
@@ -151,19 +154,28 @@ where
             shared_mem_bytes: type_len * step.block_size_x,
         };
 
-        let out = if i == last_step_idx {
-            &*output
-        } else {
-            &workspace
+        let out = {
+            if i == last_step_idx {
+                &*output
+            } else {
+                &workspace
+            }
         };
 
         println!("launching kernel with cfg: {:?}", cfg);
+        println!("input_addr: {:?}", (&workspace).as_kernel_param());
+        println!("output_addr: {:?}", out.as_kernel_param());
 
         let params = (&workspace, out, step.reduce_subinput_len);
 
         unsafe {
             kernel.clone().launch(cfg, params)?;
         }
+
+        //        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        dev.synchronize()?;
+        println!("next step\n\n\n");
     }
 
     Ok(())
