@@ -68,6 +68,7 @@ mod test {
         let mut data = (0..10).map(|x| x as f32).collect::<Vec<f32>>();
 
         let offsets: [usize; 10] = [1, 3, 5, 7, 9, 0, 2, 4, 6, 8];
+        let reverse_offsets: [usize; 10] = [5, 0, 6, 1, 7, 2, 8, 3, 9, 4];
 
         let mut input = cuda_dev.htod_sync_copy(&data).unwrap();
         let offsets = cuda_dev.htod_sync_copy(&offsets).unwrap();
@@ -86,5 +87,18 @@ mod test {
         let expected = [1f32, 3f32, 5f32, 7f32, 9f32, 0f32, 2f32, 4f32, 6f32, 8f32];
 
         assert_eq!(output, expected);
+
+        let offsets = cuda_dev.htod_sync_copy(&reverse_offsets).unwrap();
+
+        unsafe {
+            map_offsets_in_place(&mut input, 10, cuda_dev.clone(), &offsets).unwrap();
+        }
+
+        let output = cuda_dev.dtoh_sync_copy(&input).unwrap();
+
+        println!("output: {:?}", output);
+
+        //identity operation
+        assert_eq!(output, data);
     }
 }
