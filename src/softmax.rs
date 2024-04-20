@@ -189,8 +189,6 @@ fn make_reduce_mask(tensor_shape: &Shape, reduce_dims: &Vec<usize>) -> Vec<bool>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reduce::ReduceConfig;
-    use crate::reduce::ReducePlan;
 
     #[test]
     fn test_plan01() {

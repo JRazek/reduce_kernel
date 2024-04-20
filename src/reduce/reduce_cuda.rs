@@ -1,4 +1,4 @@
-use super::{ReducePlan, Tensor};
+use crate::tensor::Tensor;
 use cudarc::driver::{
     CudaDevice, CudaFunction, CudaSlice, DeviceRepr, DriverError, LaunchAsync, LaunchConfig,
     ValidAsZeroBits,

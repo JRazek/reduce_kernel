@@ -40,8 +40,6 @@ pub fn max(
 mod test {
 
     use super::*;
-    use crate::reduce::ReduceConfig;
-    use crate::reduce::ReducePlan;
 
     #[test]
     pub fn test_max_small() {
@@ -60,31 +58,31 @@ mod test {
             Shape::new(vec![2, 3, 4]),
         );
 
-//        let reduce_plan = ReducePlan::precompute(ReduceConfig {
-//            tensor_shape: input_tensor.shape.clone(),
-//            reduce_dims: vec![0, 2],
-//        });
-//
-//        let output_shape = Shape::new(vec![1, 3, 1]);
-//        let mut output_tensor: Tensor<f32> = Tensor::new(
-//            cuda_dev.clone(),
-//            cuda_dev
-//                .alloc_zeros(output_shape.elements_count() as usize)
-//                .expect("could not alloc"),
-//            output_shape,
-//        );
-//
-//        let reduce_cuda_plan: ReduceCudaPlan<f32> =
-//            ReduceCudaPlan::precompute(reduce_plan, cuda_dev.clone())
-//                .expect("could not create reduce cuda plan");
-//
-//        let tensor = max(
-//            &input_tensor,
-//            &mut output_tensor,
-//            cuda_dev.clone(),
-//            &reduce_cuda_plan,
-//        )
-//        .unwrap();
+        //        let reduce_plan = ReducePlan::precompute(ReduceConfig {
+        //            tensor_shape: input_tensor.shape.clone(),
+        //            reduce_dims: vec![0, 2],
+        //        });
+        //
+        //        let output_shape = Shape::new(vec![1, 3, 1]);
+        //        let mut output_tensor: Tensor<f32> = Tensor::new(
+        //            cuda_dev.clone(),
+        //            cuda_dev
+        //                .alloc_zeros(output_shape.elements_count() as usize)
+        //                .expect("could not alloc"),
+        //            output_shape,
+        //        );
+        //
+        //        let reduce_cuda_plan: ReduceCudaPlan<f32> =
+        //            ReduceCudaPlan::precompute(reduce_plan, cuda_dev.clone())
+        //                .expect("could not create reduce cuda plan");
+        //
+        //        let tensor = max(
+        //            &input_tensor,
+        //            &mut output_tensor,
+        //            cuda_dev.clone(),
+        //            &reduce_cuda_plan,
+        //        )
+        //        .unwrap();
         //
         //        let res = tensor.as_vec().unwrap();
         //
