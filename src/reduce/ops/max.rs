@@ -58,10 +58,9 @@ mod test {
     pub fn test_max_large() {
         let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
 
-        const N: usize = 10;
+        const N: usize = 10_000_000;
         let mut input_host = vec![0f32; N];
         input_host[N / 2 - 1] = 1.0;
-        println!("{:?}", input_host);
 
         let input_dev = cuda_dev
             .htod_sync_copy(&input_host)

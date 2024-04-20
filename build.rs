@@ -164,6 +164,7 @@ mod cuda {
                         .args(["--default-stream", "per-thread"])
                         .args(["--output-directory", &out_dir])
                         .args(["-std=c++20"])
+                        .args(["--expt-relaxed-constexpr"])
                         .args(&include_options)
                         .arg(p)
                         .stdout(std::process::Stdio::piped())
