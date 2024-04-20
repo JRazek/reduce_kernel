@@ -75,7 +75,8 @@ pub trait ReduceOperator<T>: DeviceRepr {
     fn ptx(&self) -> Ptx;
 }
 
-fn load_and_get_kernel<Op>(
+//move to utility file.
+pub(crate) fn load_and_get_kernel<Op>(
     dev: &Arc<CudaDevice>,
     operator: Op,
 ) -> Result<CudaFunction, Box<dyn std::error::Error>>
@@ -151,12 +152,12 @@ where
 
     let output_tensor = &output_tensor.data;
 
-//    let params2 = (workspace, output_tensor, global_indices);
-//
-//    unsafe {
-//        kernel.launch(cfg1, params1)?;
-//        kernel.launch(cfg2, params2)?;
-//    }
+    //    let params2 = (workspace, output_tensor, global_indices);
+    //
+    //    unsafe {
+    //        kernel.launch(cfg1, params1)?;
+    //        kernel.launch(cfg2, params2)?;
+    //    }
 
     todo!()
 }

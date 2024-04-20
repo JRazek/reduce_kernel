@@ -4,6 +4,7 @@ use cudarc::nvrtc::Ptx;
 mod softmax;
 mod reduce;
 mod tensor;
+mod map_kernel;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cuda_dev = CudaDevice::new(0)?;

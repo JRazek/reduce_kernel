@@ -3,17 +3,14 @@
 #include <cuda_runtime_api.h>
 
 template <typename T, typename Op>
-__device__ auto reduce(const T *in, T *out, const std::size_t *global_offsets,
-                       Op reduce_op) -> void {
+__device__ auto reduce(const T *in, T *out, Op reduce_op) -> void {
   auto tid = threadIdx.x;                           // # in block.
   auto idx = blockIdx.x * blockDim.x + threadIdx.x; // # in grid.
 
-  // get rid of global offsets here, apply mapping kernel before calling reduce
-  // kernel (host level).
-  auto tensor_idx = global_offsets[idx]; // offset in data.
+  // YOU STILL NEED TO CHECK FOR OUT OF BOUNDS KERNELS!
 
   extern __shared__ T shared[];
-  shared[tid] = in[tensor_idx];
+  shared[tid] = in[idx];
 
   __syncthreads();
 
@@ -25,7 +22,4 @@ __device__ auto reduce(const T *in, T *out, const std::size_t *global_offsets,
   }
 
   out[blockIdx.x] = shared[0];
-
-  // when done with the second step, apply mapping kernel again in reverse
-  // direction (again host side).
 }
