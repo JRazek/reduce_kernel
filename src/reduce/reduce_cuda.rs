@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
 struct ReduceStep {
-    block_size: u32,
-    total_blocks_count: u32,
+    block_size_x: u32,
+    grid_dim: (u32, u32, u32),
     reduce_subinput_len: u32,
 }
 
@@ -52,8 +52,8 @@ fn make_steps(
         let total_blocks_count = blocks_per_subinput * subinputs_in_input as u32;
 
         steps.push(ReduceStep {
-            block_size,
-            total_blocks_count,
+            block_size_x: block_size,
+            grid_dim: (blocks_per_subinput as u32, subinputs_in_input as u32, 1),
             reduce_subinput_len: reduce_subinput_len as u32,
         });
 
@@ -146,9 +146,9 @@ where
     let last_step_idx = steps.len() - 1;
     for (i, step) in steps.into_iter().enumerate() {
         let cfg = LaunchConfig {
-            grid_dim: (step.total_blocks_count, 1, 1),
-            block_dim: (step.block_size, 1, 1),
-            shared_mem_bytes: type_len * step.block_size,
+            grid_dim: step.grid_dim,
+            block_dim: (step.block_size_x, 1, 1),
+            shared_mem_bytes: type_len * step.block_size_x,
         };
 
         let out = if i == last_step_idx {
@@ -184,12 +184,12 @@ mod test {
         let steps = make_steps(input_len, subinput_len).unwrap();
         match steps.as_slice() {
             [ReduceStep {
-                block_size: 1024, //MAX_BLOCK_LEN
-                total_blocks_count: 10_000,
+                block_size_x: 1024, //MAX_BLOCK_LE
+                grid_dim: (2, 5000, 1),
                 reduce_subinput_len: 2_000,
             }, ReduceStep {
-                block_size: 2,
-                total_blocks_count: output_len,
+                block_size_x: 2,
+                grid_dim: (1, 5000, 1),
                 reduce_subinput_len: 2,
             }] => {}
             _ => panic!("incorrect steps: {:?}", steps),
