@@ -7,12 +7,13 @@ use std::sync::Arc;
 
 use crate::tensor::{Shape, Tensor};
 
+use crate::kernel::Kernel;
 use crate::reduce::reduce_cuda::ReduceCudaPlan;
 use crate::reduce::reduce_cuda::ReduceOperator;
 
 const PTX_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/max.ptx"));
 
-impl ReduceOperator<f32> for MaxOp {
+unsafe impl Kernel<f32> for MaxOp {
     const MODULE_NAME: &'static str = "kernel_ops";
     const FN_NAME: &'static str = "max_reduce_f32";
 
@@ -20,6 +21,8 @@ impl ReduceOperator<f32> for MaxOp {
         Ptx::from_src(PTX_SRC)
     }
 }
+
+unsafe impl ReduceOperator<f32> for MaxOp {}
 
 #[cfg(test)]
 mod test {

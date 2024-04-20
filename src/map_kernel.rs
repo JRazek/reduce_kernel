@@ -5,22 +5,20 @@ use cudarc::driver::{
 use cudarc::nvrtc::Ptx;
 use std::sync::Arc;
 
+use super::kernel::{load_and_get_kernel, Kernel};
+
 const PTX_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/map_kernel.ptx"));
 
-fn load_and_get_kernel(dev: &Arc<CudaDevice>) -> Result<CudaFunction, Box<dyn std::error::Error>> {
+#[derive(Debug, Copy, Clone)]
+pub(crate) struct MapOp;
+
+unsafe impl Kernel<f32> for MapOp {
     const MODULE_NAME: &'static str = "kernel_ops";
     const FN_NAME: &'static str = "map_offsets_in_place_f32";
 
-    if !dev.has_func(MODULE_NAME, FN_NAME) {
-        let ptx = Ptx::from_src(PTX_SRC);
-        dev.load_ptx(ptx, MODULE_NAME, &[FN_NAME])?;
+    fn ptx(&self) -> Ptx {
+        Ptx::from_src(PTX_SRC)
     }
-
-    let function = dev
-        .get_func(MODULE_NAME, FN_NAME)
-        .ok_or("could not load kernel")?;
-
-    Ok(function)
 }
 
 //f32 for now only.
@@ -30,7 +28,7 @@ pub(crate) unsafe fn map_offsets_in_place(
     dev: Arc<CudaDevice>,
     idx_to_offsets: &CudaSlice<usize>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let function = load_and_get_kernel(&dev)?;
+    let function = load_and_get_kernel(&dev, MapOp)?;
 
     const MAX_BLOCK_LEN: u32 = 1024;
 

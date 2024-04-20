@@ -3,6 +3,8 @@ use cudarc::driver::{
     CudaDevice, CudaFunction, CudaSlice, DeviceRepr, DriverError, LaunchAsync, LaunchConfig,
     ValidAsZeroBits,
 };
+
+use crate::kernel::{load_and_get_kernel, Kernel};
 use cudarc::nvrtc::Ptx;
 use std::sync::Arc;
 
@@ -103,34 +105,10 @@ where
     }
 }
 
-pub(crate) trait ReduceOperator<T>
+pub(crate) unsafe trait ReduceOperator<T>: Kernel<T>
 where
     T: DeviceRepr,
 {
-    const MODULE_NAME: &'static str;
-    const FN_NAME: &'static str;
-
-    fn ptx(&self) -> Ptx;
-}
-
-//move to utility file.
-pub(crate) fn load_and_get_kernel<Op>(
-    dev: &Arc<CudaDevice>,
-    operator: Op,
-) -> Result<CudaFunction, Box<dyn std::error::Error>>
-where
-    Op: ReduceOperator<f32>,
-{
-    if !dev.has_func(Op::MODULE_NAME, Op::FN_NAME) {
-        let ptx = operator.ptx();
-        dev.load_ptx(ptx, Op::MODULE_NAME, &[Op::FN_NAME])?;
-    }
-
-    let function = dev
-        .get_func(Op::MODULE_NAME, Op::FN_NAME)
-        .ok_or("could not load kernel")?;
-
-    Ok(function)
 }
 
 pub(crate) unsafe fn reduce<Op>(
