@@ -1,3 +1,5 @@
+#pragma once
+
 #include <concepts>
 #include <cstdint>
 #include <cuda.h>

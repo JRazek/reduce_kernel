@@ -1,15 +1,11 @@
-#include <concepts>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
 template <typename T>
-__device__ auto map_offsets_in_place(const T *in, T *out,
-                                     const std::size_t *idx_to_offsets)
-    -> void {
+__device__ auto map_offsets(const T *in, T *out,
+                            const std::size_t *idx_to_offsets) -> void {
   auto tid = threadIdx.x;
   auto idx = blockIdx.x * blockDim.x + threadIdx.x; // # in grid.
-  // YOU STILL NEED TO CHECK FOR OUT OF BOUNDS KERNELS!!!!!!!
-  // HERE AS WELL!!!
 
   extern __shared__ T shared[];
 
@@ -25,9 +21,9 @@ __device__ auto map_offsets_in_place(const T *in, T *out,
 }
 
 #define EXTERN(T, SUFFIX)                                                      \
-  extern "C" __global__ void map_offsets_in_place_##SUFFIX(                    \
+  extern "C" __global__ void map_offsets_##SUFFIX(                             \
       const T *in, T *out, const std::size_t *offsets) {                       \
-    map_offsets_in_place(in, out, offsets);                                    \
+    map_offsets(in, out, offsets);                                             \
   }
 
 // actually they are not always f32/f64 by cpp standard but for simplicity -

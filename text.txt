@@ -1,0 +1,10 @@
+reduce teraz wie zbyt wiele.
+Reduce nie powinien się zajmować mapowaniem i nie potrzebuje wszystkich informacji typu idx_to_input_offset.
+
+Te informacje potrzebują:
+softmax kernel,
+map kernel wywoływanwy przez softmax,
+
+TODO: 
+uprościć ReducePlan,
+utworzyć SoftmaxPlan.

@@ -14,7 +14,7 @@ pub(crate) struct MapOp;
 
 unsafe impl Kernel<f32> for MapOp {
     const MODULE_NAME: &'static str = "kernel_ops";
-    const FN_NAME: &'static str = "map_offsets_in_place_f32";
+    const FN_NAME: &'static str = "map_offsets_f32";
 
     fn ptx(&self) -> Ptx {
         Ptx::from_src(PTX_SRC)
