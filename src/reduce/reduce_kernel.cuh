@@ -4,12 +4,11 @@
 #include <cuda_runtime_api.h>
 #include <math.h>
 
-constexpr auto Debug = true;
+constexpr auto Debug = false;
 
 template <typename T, typename Op>
 __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
                        Op reduce_op) -> void {
-  auto tid = threadIdx.x; // in block
   auto subinput_id =
       threadIdx.x + blockIdx.x * blockDim.x; // in particular subinput
 
@@ -36,12 +35,19 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
     return;
   }
 
+  auto tid = threadIdx.x; // in block
+
   extern __shared__ T shared[];
   shared[tid] = in[grid_id];
 
+  __syncthreads();
+
   for (auto s = blockDim.x / 2; s > 0; s >>= 1) {
     if (tid < s && subinput_id + s < reduce_input_len) {
-      auto res = reduce_op(shared[tid], shared[tid + s]);
+      auto lhs = shared[tid];
+      auto rhs = shared[tid + s];
+      auto res = reduce_op(lhs, rhs);
+
       shared[tid] = res;
 
       __syncthreads();
@@ -49,8 +55,8 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
       if constexpr (Debug) {
         printf("stride: %d, blockId.y: %d, blockIdx.x: %d, subinput_id: %d, "
                "reduce(shared[%d], "
-               "shared[%d]): %f\n",
-               s, blockIdx.y, blockIdx.x, grid_id, tid, tid + s, res);
+               "shared[%d]) = reduce(%f, %f): %f\n",
+               s, blockIdx.y, blockIdx.x, grid_id, tid, tid + s, lhs, rhs, res);
       }
     }
   }
