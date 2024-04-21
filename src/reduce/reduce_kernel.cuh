@@ -1,6 +1,5 @@
 #pragma once
 
-#include <concepts>
 #include <cstdint>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
@@ -72,3 +71,5 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
     }
   }
 }
+
+

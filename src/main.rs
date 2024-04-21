@@ -2,11 +2,13 @@ use cudarc::driver::{CudaDevice, DeviceRepr, DriverError, LaunchAsync, LaunchCon
 use cudarc::nvrtc::Ptx;
 
 mod exp;
+mod kernel;
 mod map_kernel;
 mod reduce;
 mod softmax;
+mod sub;
 mod tensor;
-mod kernel;
+mod binary_op;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cuda_dev = CudaDevice::new(0)?;

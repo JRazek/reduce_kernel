@@ -147,6 +147,7 @@ mod tests {
         let tensor_shape = Shape::from([2, 3, 4]);
         let ReducePlan {
             idx_to_input_offsets,
+            idx_to_output_offsets,
             ..
         } = ReducePlan::precompute(&tensor_shape, vec![0, 2]);
 
@@ -179,6 +180,10 @@ mod tests {
         assert_eq!(idx_to_input_offsets[21], 21);
         assert_eq!(idx_to_input_offsets[22], 22);
         assert_eq!(idx_to_input_offsets[23], 23);
+
+        println!("idx_to_output_offsets: {:?}", idx_to_output_offsets);
+
+        panic!();
     }
     #[test]
     fn test_plan02() {
@@ -186,6 +191,7 @@ mod tests {
         let tensor_shape = Shape::from([2, 3, 4]);
         let ReducePlan {
             idx_to_input_offsets,
+            idx_to_output_offsets,
             ..
         } = ReducePlan::precompute(&tensor_shape, vec![1]);
 
@@ -220,6 +226,10 @@ mod tests {
         assert_eq!(idx_to_input_offsets[21], 15);
         assert_eq!(idx_to_input_offsets[22], 19);
         assert_eq!(idx_to_input_offsets[23], 23);
+
+        println!("idx_to_output_offsets: {:?}", idx_to_output_offsets);
+
+        panic!();
     }
 
     #[test]

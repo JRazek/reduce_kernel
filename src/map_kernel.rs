@@ -46,7 +46,7 @@ pub(crate) unsafe fn map_offsets_in_place(
 
     let input: &CudaSlice<_> = input;
 
-    let params = (input, input, idx_to_offsets);
+    let params = (input, idx_to_offsets, input_len);
 
     function.launch(cfg, params)?;
 

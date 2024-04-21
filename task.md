@@ -34,6 +34,7 @@ __device__ auto map_offsets_in_place(T *data, const std::size_t *idx_to_offsets)
   data[idx] = input;
 }
 ```
+Though one could argue to do it without actually permuting data while reading to shared memory in later steps. This however makes it more "modular" and easier to explain here :).
 
 but... how to compute `idx_to_offsets`?
 
@@ -263,7 +264,7 @@ mod tests {
 ```
 
 It may be probably simpified and optimized but its just a CPU side precomputation.
-`ReducePlan` struct holds the initial permutation - before reduction and the final permutation - after reduction.
+`ReducePlan` struct holds the initial permutation (mapping, not actual mapped data) - before reduction, and the final permutation - after reduction.
 Tests show how it works for a multidimensional reduce shape.
 
 Output shape in this case after reduction is a shape with "projected" dimensions of input tensor onto non-reduced dimensions.
@@ -494,7 +495,7 @@ e.g. block3 will handle data mapped as [10,  3,  7,  11].
 Each of these blocks will of course consist of 4 threads.
 
 ### Solution 2
-Use cooperative groups. If I were to do it in practice, I would probably use that approach.
+Use cooperative groups, I would need to actually research this more though.
 
 # Concrete reduction algorithms
 Using this template we can obviously implement many reduction algorithms:
