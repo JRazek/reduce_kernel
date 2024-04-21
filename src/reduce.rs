@@ -23,8 +23,10 @@ pub struct ReducePlan {
     pub(crate) input_tensor_shape: Shape,
     pub(crate) output_tensor_shape: Shape,
 
+    //after the reduction, when in context of an input tensor-shaped buffer, there is no need to
+    //store indices. If you run each block corresponding to a separate sub-tensor in a different grid's y component, you can access
+    //blockIdx.y element in the reduced buffer.
     pub(crate) idx_to_input_offsets: Vec<usize>, //for initial mapping
-    pub(crate) idx_to_output_offsets: Vec<usize>, //for final mapping
 }
 
 impl ReducePlan {
@@ -49,7 +51,6 @@ impl ReducePlan {
         let reduce_tensors_strides = reduce_tensors_shape.compute_strides();
 
         let mut idx_to_input_offset_vec = vec![0; input_tensor_shape.elements_count() as usize];
-        let mut idx_to_output_offset_vec = vec![0; output_tensor_shape.elements_count() as usize];
 
         //each element in output tensor corresponds to a block of elements in input tensor.
         //this describes the mapping from output tensor to input tensor (first elements of each block)
@@ -62,26 +63,29 @@ impl ReducePlan {
             let output_tensor_strided_index =
                 compute_strided_index(output_tensor_idx as usize, &output_tensor_strides);
 
-            idx_to_output_offset_vec[output_tensor_idx as usize] =
-                dot(&output_tensor_strided_index, &output_tensor_strides);
+            let idx_to_idx_output_el = dot(
+                &output_tensor_strided_index,
+                &output_elements_strides_in_input_tensor,
+            );
 
             for reduce_tensor_idx in 0..reduce_tensors_shape.elements_count() {
-                let input_tensor_offset = dot(
-                    &output_tensor_strided_index,
-                    &output_elements_strides_in_input_tensor,
-                ) + dot(
+                //inside the reduced subtensor. Assuming its first element is of index 0 (locally).
+                let offset_from_first_element_of_subtensor = dot(
                     &compute_strided_index(reduce_tensor_idx as usize, &reduce_tensors_strides),
                     &input_tensor_strides,
                 );
 
+                let input_tensor_offset =
+                    idx_to_idx_output_el + offset_from_first_element_of_subtensor;
+
                 idx_to_input_offset_vec[input_tensor_idx] = input_tensor_offset;
+
                 input_tensor_idx += 1;
             }
         }
 
         let plan = ReducePlan {
             idx_to_input_offsets: idx_to_input_offset_vec,
-            idx_to_output_offsets: idx_to_output_offset_vec,
             input_tensor_shape: input_tensor_shape.clone(),
             output_tensor_shape,
         };
@@ -147,7 +151,6 @@ mod tests {
         let tensor_shape = Shape::from([2, 3, 4]);
         let ReducePlan {
             idx_to_input_offsets,
-            idx_to_output_offsets,
             ..
         } = ReducePlan::precompute(&tensor_shape, vec![0, 2]);
 
@@ -180,10 +183,6 @@ mod tests {
         assert_eq!(idx_to_input_offsets[21], 21);
         assert_eq!(idx_to_input_offsets[22], 22);
         assert_eq!(idx_to_input_offsets[23], 23);
-
-        println!("idx_to_output_offsets: {:?}", idx_to_output_offsets);
-
-        panic!();
     }
     #[test]
     fn test_plan02() {
@@ -191,7 +190,6 @@ mod tests {
         let tensor_shape = Shape::from([2, 3, 4]);
         let ReducePlan {
             idx_to_input_offsets,
-            idx_to_output_offsets,
             ..
         } = ReducePlan::precompute(&tensor_shape, vec![1]);
 
@@ -226,10 +224,6 @@ mod tests {
         assert_eq!(idx_to_input_offsets[21], 15);
         assert_eq!(idx_to_input_offsets[22], 19);
         assert_eq!(idx_to_input_offsets[23], 23);
-
-        println!("idx_to_output_offsets: {:?}", idx_to_output_offsets);
-
-        panic!();
     }
 
     #[test]
