@@ -19,19 +19,25 @@ This mapping obviously will be a permutation of an initial buffer indices.
 Mapping may be performed in-place with the following kernel:
 ```cpp
 template <typename T>
-__device__ auto map_offsets_in_place(T *data, const std::size_t *idx_to_offsets)
-    -> void {
+__device__ auto map_offsets_in_place(T *data, const std::size_t *idx_to_offsets,
+                                     std::size_t size) -> void {
   auto tid = threadIdx.x;
   auto idx = blockIdx.x * blockDim.x + threadIdx.x; // # in grid.
 
-  auto tensor_idx = idx_to_offsets[idx]; // offset in data.
-  auto input = data[tensor_idx];
+  T input{};
+
+  if (idx < size) {
+  	auto tensor_idx = idx_to_offsets[idx]; // offset in data.
+  	input = data[tensor_idx];
+  }
 
   auto group = cooperative_groups::this_grid();
 
-  group.sync(); //this is needed to ensure that all threads in a grid have read the data.
+  group.sync();
 
-  data[idx] = input;
+  if (idx < size) {
+  	data[idx] = input;
+  }
 }
 ```
 Though one could try to do it without actually permuting data while reading to shared memory in later steps. This however makes it more "modular" and easier to explain here :).
@@ -271,9 +277,9 @@ It may be probably simpified and optimized but its just a CPU side precomputatio
 `ReducePlan` struct holds the initial permutation (mapping, not actual mapped data) - before reduction, and the final permutation - after reduction.
 Tests show how it works for a multidimensional reduce shape.
 
-Output shape in this case after reduction is a shape with "projected" dimensions of input tensor onto non-reduced dimensions.
+Output shape (of reduce operation) is a shape with "projected" dimensions of input tensor onto non-reduced dimensions.
 e.g. if input tensor is of shape (2, 3, 4) and reduce_dims is [0, 2], then output shape is (1, 3, 1).
-Each of indices in output tensor corresponds to a block of elements in input tensor that was reduced. 
+Each of indices in output tensor corresponds to a subtensor in input tensor that was reduced. 
 
 e.g. if our tensor is of shape (4, 3) with reduce dim [0] and our reduce operator is max(), then we get:
 ```
@@ -292,7 +298,7 @@ with a shape (1, 3).
 One still however needs to actually implement kernel and its execution. In general, there's no hard limit on the size of a reduced tensor. 
 Start with a tensor (2, 3, 4) and [0, 2] reduce dims.
 Shape of each tensor for reduction is (2, 1, 4) and its size is 8.
-In the output we will have the following after mapping:
+We will have the following layout after mapping, with ith each box corresponding to ith memory cell in an output buffer.
 
 ```
 [0,  4,  8,  1,  5,  9,  2,  6,  10,  3,  7,  11, 12, 16, 20, 13, 17, 21,  14, 18, 22, 15,  19, 23]
@@ -396,20 +402,28 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
 
   auto grid_id = subinput_id + reduce_input_len * blockIdx.y; // in entire input
 
+  auto tid = threadIdx.x; // in block
+
+  auto grid = cooperative_groups::this_grid();
+
+  extern __shared__ T shared[];
+
+  //this read should be valid always
+  auto input = in[grid_id];
+
+  grid.sync();//if output and input are same, then in order to avoid data race, we need to first store and sync.
+
   // in each gridDim.x, it may happen, that for gridId.y==n and gridId.y==n+1,
   // ending and starting grid_id will coincide. Also to make sure that no out of
   // bound access happens, this is used.
   // This will lead to branch divergence only on boundaries.
-  if (subinput_id >= reduce_input_len) {
-    return;
+  // I cannot return from the thread in the beginning, as it will lead to a deadlock
+
+  if (subinput_id < reduce_input_len) {
+  	shared[tid] = input;
   }
 
-  auto tid = threadIdx.x; // in block
-
-  extern __shared__ T shared[];
-  shared[tid] = in[grid_id];
-
-  __syncthreads(); //after each of our threads in a block has written data into shared memory, wait on a barrier.
+  __syncthreads();
 
   for (auto s = blockDim.x / 2; s > 0; s >>= 1) {
     if (tid < s && subinput_id + s < reduce_input_len) {
@@ -422,10 +436,6 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
 
     __syncthreads();
   }
-
-
-  auto group = cooperative_groups::this_grid();
-  group.sync(); //if one uses input as new output in the iterations, this might be important to ensure that no datarace happen.
 
   if (tid == 0) {
     auto out_id = blockIdx.x + gridDim.x * blockIdx.y;
