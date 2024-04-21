@@ -8,18 +8,20 @@ __device__ auto map_offsets_in_place(T *data, const std::size_t *idx_to_offsets,
   auto tid = threadIdx.x;
   auto idx = blockIdx.x * blockDim.x + threadIdx.x; // # in grid.
 
-  if (idx >= size) {
-    return;
-  }
+  T input{};
 
-  auto tensor_idx = idx_to_offsets[idx]; // offset in data.
-  auto input = data[tensor_idx];
+  if (idx < size) {
+  	auto tensor_idx = idx_to_offsets[idx]; // offset in data.
+  	input = data[tensor_idx];
+  }
 
   auto group = cooperative_groups::this_grid();
 
   group.sync();
 
-  data[idx] = input;
+  if (idx < size) {
+  	data[idx] = input;
+  }
 }
 
 #define EXTERN(T, SUFFIX)                                                      \

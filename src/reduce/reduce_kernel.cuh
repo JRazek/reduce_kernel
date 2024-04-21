@@ -4,6 +4,7 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 #include <math.h>
+#include <cooperative_groups.h>
 
 constexpr auto Debug = false;
 
@@ -15,31 +16,25 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
 
   auto grid_id = subinput_id + reduce_input_len * blockIdx.y; // in entire input
 
-  if constexpr (Debug) {
-    if (grid_id == 0) {
-      printf("input_addr: %p\n", in);
-      printf("output_addr: %p\n", out);
-    }
-  }
+  auto tid = threadIdx.x; // in block
+
+  auto grid = cooperative_groups::this_grid();
+
+  extern __shared__ T shared[];
+
+  auto input = in[grid_id];
+
+  grid.sync();//if output and input are same, then in order to avoid data race, we need to first store and sync.
 
   // in each gridDim.x, it may happen, that for gridId.y==n and gridId.y==n+1,
   // ending and starting grid_id will coincide. Also to make sure that no out of
   // bound access happens, this is used.
   // This will lead to branch divergence only on boundaries.
-  if (subinput_id >= reduce_input_len) {
-    if constexpr (Debug) {
-      printf(
-          "thread with subinput_id: %d, on blockIdx.x: %d, and blockIdy.y: %d "
-          "exitted\n",
-          subinput_id, blockIdx.x, blockIdx.y);
-    }
-    return;
+  // I cannot return from the thread in the beginning, as it will lead to a deadlock
+
+  if (subinput_id < reduce_input_len) {
+  	shared[tid] = input;
   }
-
-  auto tid = threadIdx.x; // in block
-
-  extern __shared__ T shared[];
-  shared[tid] = in[grid_id];
 
   __syncthreads();
 
@@ -50,13 +45,6 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
       auto res = reduce_op(lhs, rhs);
 
       shared[tid] = res;
-
-      if constexpr (Debug) {
-        printf("stride: %d, blockId.y: %d, blockIdx.x: %d, subinput_id: %d, "
-               "reduce(shared[%d], "
-               "shared[%d]) = reduce(%f, %f): %f\n",
-               s, blockIdx.y, blockIdx.x, grid_id, tid, tid + s, lhs, rhs, res);
-      }
     }
 
     __syncthreads();
@@ -65,10 +53,6 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
   if (tid == 0) {
     auto out_id = blockIdx.x + gridDim.x * blockIdx.y;
     out[out_id] = shared[0];
-
-    if constexpr (Debug) {
-      printf("saving in out[%d]: %f\n", out_id, shared[0]);
-    }
   }
 }
 
