@@ -14,7 +14,7 @@ Usually the same operation is applied many times - there is no sense in copying 
 I assume precomputing is accepted as long as it may be reused for each operation (same input tensor shape, same reduce dimensions).
 
 Since computing such mapping in each kernel may take some time, I see it as reasonable to precompute it on host and copy it to device buffer. 
-This mapping obviously will be a permutation of a buffer dimensions.
+This mapping obviously will be a permutation of an initial buffer indices.
 
 Mapping may be performed in-place with the following kernel:
 ```cpp
@@ -34,7 +34,7 @@ __device__ auto map_offsets_in_place(T *data, const std::size_t *idx_to_offsets)
   data[idx] = input;
 }
 ```
-Though one could argue to do it without actually permuting data while reading to shared memory in later steps. This however makes it more "modular" and easier to explain here :).
+Though one could try to do it without actually permuting data while reading to shared memory in later steps. This however makes it more "modular" and easier to explain here :).
 
 but... how to compute `idx_to_offsets`?
 
@@ -508,6 +508,8 @@ Each of these blocks will of course consist of 4 threads.
 For this specific iteration step, in the end, block_i will write to exactly ith memory cell in the output buffer.
 This is relevant, as again in the next iteration, output buffer may be reused as a new input buffer.
 
+With the given planning and execution, this should generalize to any number of steps.
+
 ### Solution 2
 Use cooperative groups, I would need to actually research this more though.
 
@@ -581,4 +583,4 @@ Softmax itself may be implemented as a host-side module that calls multiple kern
 
 To map buffer back to the shape we initially had, just reverse the initial permutation and again apply mapping kernel.
 
-AFAIK if one used cooperative groups for reduction it would be possible to pack all of these into a single kernel.
+AFAIK if one used cooperative groups for reduction it would be possible to pack all of these into a single kernel with one host-sided launch.
