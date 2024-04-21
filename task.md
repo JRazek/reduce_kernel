@@ -1,10 +1,10 @@
 # Softmax Kernel
 
-Note, this is only a sketch. It would be still needed to test these solutions extensively in practice. There may be breaking corner cases etc.
+This is a very first sketch of a solution. It would be still very important to test these solutions extensively in practice. There may be breaking corner cases and obviously tons of optimizations/simplifications to be made.
 
 ## Problem
-Biggest issue is the fact that dimensions of reduction AND dimensions of a tensor are arbitary.
-In order to somehow apply any operations on a tensor, we need to know somehow know the mapping between coordinates and contiguous buffer.
+IMO biggest issue is the fact that dimensions of reduction AND dimensions of a tensor are arbitary.
+In order to apply any operations on a tensor, we need to know the mapping between coordinates and contiguous buffer.
 Another thing is that for reduce operations, we'd like to have buffers corresponding to each reduction subtensor to be contiguous.
 
 Thus:
@@ -44,8 +44,10 @@ pub struct ReducePlan {
     pub(crate) input_tensor_shape: Shape,
     pub(crate) output_tensor_shape: Shape,
 
+    //after the reduction, when in context of an input tensor-shaped buffer, there is no need to
+    //store indices. If you run each block corresponding to a separate sub-tensor in a different grid's y component, you can access
+    //blockIdx.y element in the reduced buffer.
     pub(crate) idx_to_input_offsets: Vec<usize>, //for initial mapping
-    pub(crate) idx_to_output_offsets: Vec<usize>, //for final mapping
 }
 
 impl ReducePlan {
@@ -70,7 +72,6 @@ impl ReducePlan {
         let reduce_tensors_strides = reduce_tensors_shape.compute_strides();
 
         let mut idx_to_input_offset_vec = vec![0; input_tensor_shape.elements_count() as usize];
-        let mut idx_to_output_offset_vec = vec![0; output_tensor_shape.elements_count() as usize];
 
         //each element in output tensor corresponds to a block of elements in input tensor.
         //this describes the mapping from output tensor to input tensor (first elements of each block)
@@ -83,26 +84,29 @@ impl ReducePlan {
             let output_tensor_strided_index =
                 compute_strided_index(output_tensor_idx as usize, &output_tensor_strides);
 
-            idx_to_output_offset_vec[output_tensor_idx as usize] =
-                dot(&output_tensor_strided_index, &output_tensor_strides);
+            let idx_to_idx_output_el = dot(
+                &output_tensor_strided_index,
+                &output_elements_strides_in_input_tensor,
+            );
 
             for reduce_tensor_idx in 0..reduce_tensors_shape.elements_count() {
-                let input_tensor_offset = dot(
-                    &output_tensor_strided_index,
-                    &output_elements_strides_in_input_tensor,
-                ) + dot(
+                //inside the reduced subtensor. Assuming its first element is of index 0 (locally).
+                let offset_from_first_element_of_subtensor = dot(
                     &compute_strided_index(reduce_tensor_idx as usize, &reduce_tensors_strides),
                     &input_tensor_strides,
                 );
 
+                let input_tensor_offset =
+                    idx_to_idx_output_el + offset_from_first_element_of_subtensor;
+
                 idx_to_input_offset_vec[input_tensor_idx] = input_tensor_offset;
+
                 input_tensor_idx += 1;
             }
         }
 
         let plan = ReducePlan {
             idx_to_input_offsets: idx_to_input_offset_vec,
-            idx_to_output_offsets: idx_to_output_offset_vec,
             input_tensor_shape: input_tensor_shape.clone(),
             output_tensor_shape,
         };
@@ -262,8 +266,8 @@ mod tests {
     }
 }
 ```
-
 It may be probably simpified and optimized but its just a CPU side precomputation.
+
 `ReducePlan` struct holds the initial permutation (mapping, not actual mapped data) - before reduction, and the final permutation - after reduction.
 Tests show how it works for a multidimensional reduce shape.
 
@@ -295,7 +299,7 @@ In the output we will have the following after mapping:
 [___________(0,0,0)_____________][___________(0,1,0)_____________][___________(0,2,0)_____________]
 ```
 
-Each of these slices may be divided into blocks of size given by 
+Each of these slices may be divided into thread blocks of size given by 
 
 ```rust
 let optimal_subinput_len = {
@@ -309,11 +313,14 @@ let optimal_subinput_len = {
 let block_size = MAX_BLOCK_LEN.min(optimal_subinput_len);
 assert!(block_size.is_power_of_two());
 ```
+Power of 2 block size is used to ensure that reduce kernel will not skip any element while iterating over strides.
+
 Assume for simplicity that MAX_BLOCK_LEN=4. Each of these boxes will need to be reduced with 2 separate blocks of size 4.
 The problem is each of such "block level" reduction will only be capable of reducing 4 elements at once.
 Thus we will be again left with 2 elements to reduce for each box.
 
 ### Solution 1
+
 use the following planning algorithm
 ```rust
 struct ReduceStep {
@@ -416,6 +423,10 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
     __syncthreads();
   }
 
+
+  auto group = cooperative_groups::this_grid();
+  group.sync(); //if one uses input as new output in the iterations, this might be important to ensure that no datarace happen.
+
   if (tid == 0) {
     auto out_id = blockIdx.x + gridDim.x * blockIdx.y;
     out[out_id] = shared[0];
@@ -486,13 +497,16 @@ The reason why kernel will work well is that each index will correspond to a sep
 Given planning algorithm for the first iteration in the given example (2, 3, 4) [0, 2], 
 it requires us to launch blocks in the following grid
 ```
-[block0, block1] 
-[block2, block3]
-[block4, block5]
+[block_0, block_1] 
+[block_2, block_3]
+[block_4, block_5]
 ```
 each row corresponds to subinput and column to a specific block.
-e.g. block3 will handle data mapped as [10,  3,  7,  11].
+e.g. block_3 will handle data mapped as [10,  3,  7,  11].
 Each of these blocks will of course consist of 4 threads.
+
+For this specific iteration step, in the end, block_i will write to exactly ith memory cell in the output buffer.
+This is relevant, as again in the next iteration, output buffer may be reused as a new input buffer.
 
 ### Solution 2
 Use cooperative groups, I would need to actually research this more though.
@@ -556,14 +570,15 @@ pub fn test_max_large() {
 }
 ```
 
-
 Softmax itself may be implemented as a host-side module that calls multiple kernels one after another.
-1) apply the mapping.
+1) apply the permutation mapping.
 2) max reduce on given reduce dimensions.
-3) use subtraction kernel
-    to be able to access indices of reduced tensor(corresponding maxes) within the element of a "softmaxed" tensor, we may use a very similar trick as with the initial mapping - to avoid division/modulo operations within the kernel.
+3) To subtract data, we may again launch a grid of dim (reduced_subtensor_size.div_ceil(block_size), number_of_reduced_subtensors, 1). Each thread will have a single memory cell to handle. No device level sync is needed. Each block, will be able to access the "maximal x" for its subtensor by accessing blockIdx.y element of a buffer given from reduce operation.
+
 4) numeric, element wise exponent kernel - no need to split the execution in any significant way. Just apply for all elements of a buffer.
-5) repeat 2-3, but with sum operator on a buffer after exponent and numeric division instead of subtraction
+5) repeat 2-3, but with sum operator on an element-wise exponentiated buffer and apply numeric division instead of subtraction.
 6) element wise multiply by normalization parameter alpha.
 
 To map buffer back to the shape we initially had, just reverse the initial permutation and again apply mapping kernel.
+
+AFAIK if one used cooperative groups for reduction it would be possible to pack all of these into a single kernel.
