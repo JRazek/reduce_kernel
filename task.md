@@ -424,32 +424,58 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
 
 And its launch on host side is:
 ```rust
-for (i, step) in steps.into_iter().enumerate() {
-    let cfg = LaunchConfig {
-        grid_dim: step.grid_dim,
-        block_dim: (step.block_size_x, 1, 1),
-        shared_mem_bytes: type_len * step.block_size_x,
-    };
+pub(crate) unsafe fn reduce<Op>(
+    reduce_input: CudaSlice<f32>, //acts as workspace as well.
+    reduce_input_len: usize,
+    reduce_subinput_len: usize,
+    output: &mut CudaSlice<f32>, //requires output to be at least of size input_len / reduce_sub_input_len
+    dev: Arc<CudaDevice>,
+    reduce_operator: Op,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    Op: ReduceOperator<f32>,
+{
+    let workspace = reduce_input;
+    let kernel = load_and_get_kernel(&dev, reduce_operator)?;
 
-    let out = {
-        if i == last_step_idx {
-            &*output    //save to output the last step
-        } else {
-            &workspace  //preallocated buffer
+    let type_len = std::mem::size_of::<f32>() as u32;
+
+    //TODO this should probably also be in a plan
+    let steps = make_steps(reduce_input_len, reduce_subinput_len)?;
+
+    let last_step_idx = steps.len() - 1;
+    for (i, step) in steps.into_iter().enumerate() {
+        let cfg = LaunchConfig {
+            grid_dim: step.grid_dim,
+            block_dim: (step.block_size_x, 1, 1),
+            shared_mem_bytes: type_len * step.block_size_x,
+        };
+
+        let out = {
+            if i == last_step_idx {
+                &*output
+            } else {
+                &workspace
+            }
+        };
+
+
+        // it may use use aliasing workspace/out. It should be ok. 
+        // Threads only use data within their block and they're synchronized with barriers on that level.
+
+        let params = (&workspace, out, step.reduce_subinput_len);
+
+        unsafe {
+            kernel.clone().launch(cfg, params)?;
         }
-    };
 
-    // it may use use aliasing workspace/out. It should be ok. 
-    // Threads only use data within their block and they're synchronized with barriers on that level.
-    let params = (&workspace, out, step.reduce_subinput_len);
-
-    unsafe {
-        kernel.clone().launch(cfg, params)?;
+        dev.synchronize()?;
+        println!("next step\n\n\n");
     }
 
-    //maybe use stream?
-    dev.synchronize()?;
+    Ok(())
 }
+
 ```
 each block needs sizeof(T) * blockDim.x bytes of shared memory. Indexing in `shared[tid]` is modulo blockDim.x.
 This kernel will work well for sizeof(T)==4. Each consecutive 4 bytes in shared memory correspond to a bank.
@@ -496,6 +522,39 @@ __device__ auto sum_reduce(const T *in, T *out, std::uint32_t reduce_input_len)
   reduce<T, SumOp<T>>(in, out, reduce_input_len, SumOp<T>{});
 }
 ```
+
+sample setup for max reduce kernel:
+```rust
+#[test]
+pub fn test_max_large() {
+    let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
+
+    const N: usize = 100_000;
+    let mut input_host = vec![0f32; N];
+    input_host[N / 2 - 1] = 3f32;
+    input_host[0] = 2f32;
+    input_host[N - 1] = 4f32;
+
+    let input_dev = cuda_dev
+        .htod_sync_copy(&input_host)
+        .expect("could not alloc and copy");
+
+    let mut output = cuda_dev.alloc_zeros(2).expect("could not alloc");
+
+    unsafe {
+        //N/2 is a subinput len.
+        reduce(input_dev, N, N / 2, &mut output, cuda_dev.clone(), MaxOp)
+            .expect("could not reduce");
+    }
+
+    let res = cuda_dev
+        .dtoh_sync_copy(&mut output)
+        .expect("could not copy to host");
+
+    assert_eq!(res, vec![3f32, 4f32]);
+}
+```
+
 
 Softmax itself may be implemented as a host-side module that calls multiple kernels one after another.
 1) apply the mapping.
