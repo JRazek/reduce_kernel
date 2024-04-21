@@ -39,7 +39,6 @@ but... how to compute `idx_to_offsets`?
 
 For testing I used mostly `Rust` and `cudarc` crate. For computation of such idx_to_offsets I used the following code:
 ```rust
-#[derive(Debug, Clone)]
 pub struct ReducePlan {
     pub(crate) input_tensor_shape: Shape,
     pub(crate) output_tensor_shape: Shape,
@@ -316,6 +315,12 @@ Thus we will be again left with 2 elements to reduce for each box.
 ### Solution 1
 use the following planning algorithm
 ```rust
+struct ReduceStep {
+    block_size_x: u32,
+    grid_dim: (u32, u32, u32),
+    reduce_subinput_len: u32,
+}
+
 fn make_steps(
     mut reduce_input_len: usize,
     mut reduce_subinput_len: usize,
@@ -367,7 +372,6 @@ fn make_steps(
         reduce_subinput_len = blocks_per_subinput as usize;
     }
 
-    println!("steps: {:?}", steps);
     Ok(steps)
 }
 ```
@@ -417,7 +421,42 @@ __device__ auto reduce(const T *in, T *out, std::uint32_t reduce_input_len,
   }
 }
 ```
-for the first iteration in the given example (2, 3, 4) [0, 2], 
+
+And its launch on host side is:
+```rust
+for (i, step) in steps.into_iter().enumerate() {
+    let cfg = LaunchConfig {
+        grid_dim: step.grid_dim,
+        block_dim: (step.block_size_x, 1, 1),
+        shared_mem_bytes: type_len * step.block_size_x,
+    };
+
+    let out = {
+        if i == last_step_idx {
+            &*output    //save to output the last step
+        } else {
+            &workspace  //preallocated buffer
+        }
+    };
+
+    // it may use use aliasing workspace/out. It should be ok. 
+    // Threads only use data within their block and they're synchronized with barriers on that level.
+    let params = (&workspace, out, step.reduce_subinput_len);
+
+    unsafe {
+        kernel.clone().launch(cfg, params)?;
+    }
+
+    //maybe use stream?
+    dev.synchronize()?;
+}
+```
+each block needs sizeof(T) * blockDim.x bytes of shared memory. Indexing in `shared[tid]` is modulo blockDim.x.
+This kernel will work well for sizeof(T)==4. Each consecutive 4 bytes in shared memory correspond to a bank.
+Shared memory is fast, but if more then 2 threads try access memory (even if it doesnt overlap) within the same memory bank, it will need to be serialized into multiple cycles. 
+The reason why kernel will work well is that each index will correspond to a separate memory bank. i.e. memory bank conflict may occur iff 2 threads explicity try to access the same cell.
+
+Given planning algorithm for the first iteration in the given example (2, 3, 4) [0, 2], 
 it requires us to launch blocks in the following grid
 ```
 [block0, block1] 
@@ -429,8 +468,7 @@ e.g. block3 will handle data mapped as [10,  3,  7,  11].
 Each of these blocks will of course consist of 4 threads.
 
 ### Solution 2
-Use cooperative groups.
-
+Use cooperative groups. If I were to do it in practice, I would probably use that approach.
 
 # Concrete reduction algorithms
 Using this template we can obviously implement many reduction algorithms:
@@ -458,3 +496,14 @@ __device__ auto sum_reduce(const T *in, T *out, std::uint32_t reduce_input_len)
   reduce<T, SumOp<T>>(in, out, reduce_input_len, SumOp<T>{});
 }
 ```
+
+Softmax itself may be implemented as a host-side module that calls multiple kernels one after another.
+1) apply the mapping.
+2) max reduce on given reduce dimensions.
+3) use subtraction kernel
+    to be able to access indices of reduced tensor(corresponding maxes) within the element of a "softmaxed" tensor, we may use a very similar trick as with the initial mapping - to avoid division/modulo operations within the kernel.
+4) numeric, element wise exponent kernel - no need to split the execution in any significant way. Just apply for all elements of a buffer.
+5) repeat 2-3, but with sum operator on a buffer after exponent and numeric division instead of subtraction
+6) element wise multiply by normalization parameter alpha.
+
+To map buffer back to the shape we initially had, just reverse the initial permutation and again apply mapping kernel.
