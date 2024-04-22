@@ -18,8 +18,8 @@ use crate::reduce::ReducePlan;
 
 use crate::kernel::{load_and_get_kernel, Kernel};
 
-pub mod sub;
 pub mod div;
+pub mod sub;
 
 pub(crate) unsafe trait BinaryOperator<T>: Kernel<T>
 where
@@ -31,7 +31,7 @@ pub(crate) unsafe fn apply_in_place<Op>(
     rhs: &mut CudaSlice<f32>,
     lhs: &CudaSlice<f32>,
     len: usize,
-    dev: Arc<CudaDevice>,
+    dev: &Arc<CudaDevice>,
     op: Op,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
