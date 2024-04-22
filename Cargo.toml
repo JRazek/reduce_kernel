@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 cudarc = { git = "https://github.com/coreylowman/cudarc.git" }
 
-#[patch.crates-io]
-#cudarc = { path = "../cudarc" }
+[patch."https://github.com/coreylowman/cudarc.git"]
+cudarc = { path = "../cudarc" }
 
 [features]
 cuda-version-from-build-system = ["cudarc/cuda-version-from-build-system"]

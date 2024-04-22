@@ -90,9 +90,6 @@ pub(crate) unsafe fn reduce<Op>(
 where
     Op: ReduceOperator<f32>,
 {
-    //currently only for 2^n inputs.
-
-    //    assert!(reduce_input_len.is_power_of_two());
     let workspace = reduce_input;
     let kernel = load_and_get_kernel(&dev, reduce_operator)?;
 
@@ -124,11 +121,10 @@ where
         let params = (&workspace, out, step.reduce_subinput_len);
 
         unsafe {
-            kernel.clone().launch(cfg, params)?;
+            kernel.clone().launch_cooperative(cfg, params)?;
         }
 
         dev.synchronize()?;
-        println!("next step\n\n\n");
     }
 
     Ok(())

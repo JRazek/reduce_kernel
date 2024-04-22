@@ -48,7 +48,7 @@ pub(crate) unsafe fn map_offsets_in_place(
 
     let params = (input, idx_to_offsets, input_len);
 
-    function.launch(cfg, params)?;
+    function.launch_cooperative(cfg, params)?;
 
     Ok(())
 }

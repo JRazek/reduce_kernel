@@ -10,15 +10,15 @@ template <typename T> struct SumOp {
 
 // calculates maximum in each block and stores it in out[blockIdx.x]
 template <typename T>
-__device__ auto sum_reduce(const T *in, T *out, std::uint32_t reduce_input_len)
-    -> void {
-  reduce<T, SumOp<T>>(in, out, reduce_input_len, SumOp<T>{});
+__device__ auto sum_reduce(const T *in, T *out,
+                           std::uint32_t reduce_subinput_len) -> void {
+  reduce<T, SumOp<T>>(in, out, reduce_subinput_len, SumOp<T>{});
 }
 
 #define EXTERN(T, SUFFIX)                                                      \
   extern "C" __global__ void sum_reduce_##SUFFIX(                              \
-      T *in, T *out, std::uint32_t reduce_input_len) {                         \
-    sum_reduce(in, out, reduce_input_len);                                     \
+      T *in, T *out, std::uint32_t reduce_subinput_len) {                      \
+    sum_reduce(in, out, reduce_subinput_len);                                  \
   }
 
 // actually they are not always f32/f64 by cpp standard but for simplicity -

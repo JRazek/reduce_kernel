@@ -106,6 +106,6 @@ mod test {
             .dtoh_sync_copy(&mut output)
             .expect("could not copy to host");
 
-        assert_eq!(res, vec![100_000f32]);
+        assert_eq!(res, vec![N as f32]);
     }
 }
