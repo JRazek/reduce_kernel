@@ -7,14 +7,14 @@ use std::sync::Arc;
 
 use crate::kernel::{load_and_get_kernel, Kernel};
 
-const PTX_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/sub.ptx"));
+const PTX_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/div.ptx"));
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct SubOp;
+pub(crate) struct DivOp;
 
-unsafe impl Kernel<f32> for SubOp {
+unsafe impl Kernel<f32> for DivOp {
     const MODULE_NAME: &'static str = "kernel_ops";
-    const FN_NAME: &'static str = "sub_f32";
+    const FN_NAME: &'static str = "div_f32";
 
     fn ptx(&self) -> Ptx {
         todo!()

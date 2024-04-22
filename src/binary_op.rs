@@ -19,6 +19,7 @@ use crate::reduce::ReducePlan;
 use crate::kernel::{load_and_get_kernel, Kernel};
 
 pub mod sub;
+pub mod div;
 
 pub(crate) unsafe trait BinaryOperator<T>: Kernel<T>
 where

@@ -29,7 +29,7 @@ where
 pub(crate) unsafe fn apply_in_place<Op>(
     rhs: &mut CudaSlice<f32>,
     len: usize,
-    dev: Arc<CudaDevice>,
+    dev: &Arc<CudaDevice>,
     op: Op,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
