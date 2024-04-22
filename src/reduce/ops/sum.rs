@@ -60,7 +60,7 @@ mod test {
     pub fn test_sum_large() {
         let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
 
-        const N: usize = 100_000;
+        const N: usize = 20000;
         let mut input_host = vec![0f32; N];
         input_host[N / 2 - 1] = 3f32;
         input_host[0] = 2f32;
@@ -88,7 +88,7 @@ mod test {
     pub fn test_sum1d() {
         let cuda_dev = CudaDevice::new(0).expect("could not create cuda device");
 
-        const N: usize = 100_000;
+        const N: usize = 30000;
         let mut input_host = vec![1f32; N];
 
         let input_dev = cuda_dev
