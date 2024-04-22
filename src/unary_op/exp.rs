@@ -5,7 +5,7 @@ use cudarc::driver::{
 use cudarc::nvrtc::Ptx;
 use std::sync::Arc;
 
-use super::kernel::{load_and_get_kernel, Kernel};
+use crate::kernel::{load_and_get_kernel, Kernel};
 
 const PTX_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/exp.ptx"));
 

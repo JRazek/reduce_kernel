@@ -1,22 +1,9 @@
 pub mod ops;
 pub mod reduce_cuda;
 
-use cudarc::driver::{
-    CudaDevice, CudaFunction, CudaSlice, DeviceRepr, DriverError, LaunchAsync, LaunchConfig,
-    ValidAsZeroBits,
-};
-use cudarc::nvrtc::Ptx;
-use std::sync::Arc;
+use super::tensor::{compute_strided_index, Shape};
 
-use super::tensor::{compute_strided_index, Shape, Tensor};
-
-use crate::exp::ExpOp;
 use crate::map_kernel::map_offsets_in_place;
-
-use super::reduce::ops::max::MaxOp;
-use super::reduce::ops::sum::SumOp;
-use super::reduce::reduce_cuda::reduce;
-use super::reduce::reduce_cuda::ReduceOperator;
 
 #[derive(Debug, Clone)]
 pub struct ReducePlan {

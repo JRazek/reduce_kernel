@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use super::tensor::{compute_strided_index, Shape, Tensor};
 
-use crate::exp::ExpOp;
 use crate::map_kernel::map_offsets_in_place;
 
 use super::reduce::ops::max::MaxOp;
@@ -16,8 +15,6 @@ use super::reduce::reduce_cuda::reduce;
 use super::reduce::reduce_cuda::ReduceOperator;
 
 use crate::reduce::ReducePlan;
-
-use crate::sub::SubOp;
 
 #[derive(Debug, Clone)]
 struct SoftmaxCudaPlan<T>
