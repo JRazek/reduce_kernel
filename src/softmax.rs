@@ -5,7 +5,7 @@ use cudarc::driver::{
 use cudarc::nvrtc::Ptx;
 use std::sync::Arc;
 
-use super::tensor::{compute_strided_index, Shape, Tensor};
+use super::tensor::{compute_strided_offset, Shape, Tensor};
 
 use crate::map_kernel::map_offsets_in_place;
 

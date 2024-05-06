@@ -30,8 +30,7 @@ pub struct Shape {
     pub(crate) shape: Vec<usize>,
 
     pub(crate) permutation: Vec<usize>,
-    pub(crate) strides_permuted: Vec<usize>,
-    pub(crate) strides_init: Vec<usize>,
+    pub(crate) strides: Vec<usize>,
 }
 
 pub fn compute_strides(shape: &[usize]) -> Vec<usize> {
@@ -63,8 +62,14 @@ impl Shape {
         Self {
             permutation: (0..shape.len()).into_iter().collect(),
             shape,
-            strides_init: strides.clone(),
-            strides_permuted: strides,
+            strides,
+        }
+    }
+
+    pub fn revert_permutations(&mut self) {
+        unsafe {
+            self.permute_unchecked(&self.permutation);
+            self.permutation = (0..self.shape.len()).into_iter().collect();
         }
     }
 
@@ -87,10 +92,7 @@ impl Shape {
         let n = self.shape.len();
 
         permute_unchecked(&mut self.shape, permutation);
-        permute_unchecked(&mut self.strides_permuted, permutation);
-
-        dbg!(&self.shape);
-        dbg!(&self.strides_permuted);
+        permute_unchecked(&mut self.strides, permutation);
     }
 
     pub fn get_offset(&self, idx: usize) -> Option<usize> {
@@ -100,18 +102,11 @@ impl Shape {
         }
 
         //wrong. Double permutation should yield the identity mapping??
-        let mut index = compute_strided_index(idx, &self.strides_permuted);
+        let mut index = compute_shape_index(idx, &self.shape);
         dbg!(&index);
-        unsafe {
-            dbg!(&self.permutation);
-            permute_unchecked(&mut index, &self.permutation);
-        }
-        dbg!(&index);
+        let offset = compute_strided_offset(&index, &self.strides);
 
-        let old_idx = dot(&index, &self.strides_init);
-        dbg!(old_idx);
-
-        Some(old_idx)
+        Some(offset)
     }
 }
 
@@ -128,13 +123,19 @@ fn dot(lhs: &Vec<usize>, rhs: &Vec<usize>) -> usize {
     lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum()
 }
 
-pub(crate) fn compute_strided_index(idx: usize, strides: &[usize]) -> Vec<usize> {
-    let mut res = vec![0; strides.len()];
+pub(crate) fn compute_strided_offset(index: &[usize], strides: &[usize]) -> usize {
+    assert_eq!(index.len(), strides.len());
+
+    index.iter().zip(strides.iter()).map(|(&i, &s)| i * s).sum()
+}
+
+pub(crate) fn compute_shape_index(idx: usize, shape: &[usize]) -> Vec<usize> {
+    let mut res = vec![0; shape.len()];
     let mut index = idx;
-    for i in 0..strides.len() {
-        let idx = strides.len() - i - 1;
-        res[idx] = index % strides[idx];
-        index /= strides[idx];
+    for i in 0..shape.len() {
+        let idx = shape.len() - i - 1;
+        res[idx] = index % shape[idx];
+        index /= shape[idx];
     }
     res
 }
@@ -167,35 +168,35 @@ mod test {
     }
 
     #[test]
-    fn test_compute_strided_index01() {
-        let strides = vec![8, 4, 1];
+    fn test_compute_shape_index01() {
+        let shape = vec![4, 4, 1];
 
-        assert_eq!(compute_strided_index(0, &strides), vec![0, 0, 0]);
-        assert_eq!(compute_strided_index(1, &strides), vec![0, 1, 0]);
-        assert_eq!(compute_strided_index(2, &strides), vec![0, 2, 0]);
-        assert_eq!(compute_strided_index(3, &strides), vec![0, 3, 0]);
+        assert_eq!(compute_shape_index(0, &shape), vec![0, 0, 0]);
+        assert_eq!(compute_shape_index(1, &shape), vec![0, 1, 0]);
+        assert_eq!(compute_shape_index(2, &shape), vec![0, 2, 0]);
+        assert_eq!(compute_shape_index(3, &shape), vec![0, 3, 0]);
 
-        assert_eq!(compute_strided_index(4, &strides), vec![1, 0, 0]);
-        assert_eq!(compute_strided_index(5, &strides), vec![1, 1, 0]);
-        assert_eq!(compute_strided_index(6, &strides), vec![1, 2, 0]);
-        assert_eq!(compute_strided_index(7, &strides), vec![1, 3, 0]);
+        assert_eq!(compute_shape_index(4, &shape), vec![1, 0, 0]);
+        assert_eq!(compute_shape_index(5, &shape), vec![1, 1, 0]);
+        assert_eq!(compute_shape_index(6, &shape), vec![1, 2, 0]);
+        assert_eq!(compute_shape_index(7, &shape), vec![1, 3, 0]);
 
-        assert_eq!(compute_strided_index(8, &strides), vec![2, 0, 0]);
+        assert_eq!(compute_shape_index(8, &shape), vec![2, 0, 0]);
         //and so on..
     }
 
     #[test]
-    fn test_compute_strided_index02() {
-        let strides = vec![1, 2, 4];
+    fn test_compute_shape_index02() {
+        let shape = vec![1, 2, 4];
 
-        assert_eq!(compute_strided_index(0, &strides), vec![0, 0, 0]);
-        assert_eq!(compute_strided_index(1, &strides), vec![0, 0, 1]);
-        assert_eq!(compute_strided_index(2, &strides), vec![0, 0, 2]);
-        assert_eq!(compute_strided_index(3, &strides), vec![0, 0, 3]);
+        assert_eq!(compute_shape_index(0, &shape), vec![0, 0, 0]);
+        assert_eq!(compute_shape_index(1, &shape), vec![0, 0, 1]);
+        assert_eq!(compute_shape_index(2, &shape), vec![0, 0, 2]);
+        assert_eq!(compute_shape_index(3, &shape), vec![0, 0, 3]);
 
-        assert_eq!(compute_strided_index(4, &strides), vec![0, 1, 0]);
-        assert_eq!(compute_strided_index(5, &strides), vec![0, 1, 1]);
-        assert_eq!(compute_strided_index(6, &strides), vec![0, 1, 2]);
-        assert_eq!(compute_strided_index(7, &strides), vec![0, 1, 3]);
+        assert_eq!(compute_shape_index(4, &shape), vec![0, 1, 0]);
+        assert_eq!(compute_shape_index(5, &shape), vec![0, 1, 1]);
+        assert_eq!(compute_shape_index(6, &shape), vec![0, 1, 2]);
+        assert_eq!(compute_shape_index(7, &shape), vec![0, 1, 3]);
     }
 }

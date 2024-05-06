@@ -1,7 +1,7 @@
 pub mod ops;
 pub mod reduce_cuda;
 
-use super::tensor::{compute_strided_index, Shape};
+use super::tensor::{compute_strided_offset, Shape};
 
 use crate::map_kernel::map_offsets_in_place;
 
@@ -25,59 +25,7 @@ impl ReducePlan {
         reduce_dims.sort();
         reduce_dims.dedup();
 
-        let reduce_mask = make_reduce_mask(input_tensor_shape, &reduce_dims);
-        let input_tensor_strides = input_tensor_shape.compute_strides();
-
-        //projected onto dimension of input tensor.
-        //e.g. if input is of shape (2, 3, 4) and reduce_dims is [0, 2], then
-        //output_tensor_shape is (1, 3, 1)
-        let (output_tensor_shape, reduce_tensors_shape) =
-            output_reduce_tensors_shapes(input_tensor_shape, &reduce_dims);
-
-        let output_tensor_strides = output_tensor_shape.compute_strides();
-        let reduce_tensors_strides = reduce_tensors_shape.compute_strides();
-
-        let mut idx_to_input_offset_vec = vec![0; input_tensor_shape.elements_count() as usize];
-
-        //each element in output tensor corresponds to a block of elements in input tensor.
-        //this describes the mapping from output tensor to input tensor (first elements of each block)
-
-        let output_elements_strides_in_input_tensor =
-            element_mul(reduce_tensors_strides.clone(), &output_tensor_strides); //Check correctness here!
-
-        let mut input_tensor_idx = 0;
-        for output_tensor_idx in 0..output_tensor_shape.elements_count() {
-            let output_tensor_strided_index =
-                compute_strided_index(output_tensor_idx as usize, &output_tensor_strides);
-
-            let idx_to_idx_output_el = dot(
-                &output_tensor_strided_index,
-                &output_elements_strides_in_input_tensor,
-            );
-
-            for reduce_tensor_idx in 0..reduce_tensors_shape.elements_count() {
-                //inside the reduced subtensor. Assuming its first element is of index 0 (locally).
-                let offset_from_first_element_of_subtensor = dot(
-                    &compute_strided_index(reduce_tensor_idx as usize, &reduce_tensors_strides),
-                    &input_tensor_strides,
-                );
-
-                let input_tensor_offset =
-                    idx_to_idx_output_el + offset_from_first_element_of_subtensor;
-
-                idx_to_input_offset_vec[input_tensor_idx] = input_tensor_offset;
-
-                input_tensor_idx += 1;
-            }
-        }
-
-        let plan = ReducePlan {
-            idx_to_input_offsets: idx_to_input_offset_vec,
-            input_tensor_shape: input_tensor_shape.clone(),
-            output_tensor_shape,
-        };
-
-        plan
+        todo!()
     }
 }
 
@@ -212,22 +160,119 @@ mod tests {
         assert_eq!(idx_to_input_offsets[22], 19);
         assert_eq!(idx_to_input_offsets[23], 23);
     }
+}
 
+#[derive(Debug, Clone)]
+pub struct NewReducePlan {
+    shape: Shape,
+}
+
+impl NewReducePlan {
+    pub fn new_precompute(input_tensor_shape: Shape, mut reduce_dims: Vec<usize>) -> NewReducePlan {
+        //descending order
+        reduce_dims.sort();
+        reduce_dims.dedup();
+
+        let n = input_tensor_shape.len();
+        let k = reduce_dims.len();
+
+        dbg!(&reduce_dims);
+
+        let mut permutation: Vec<_> = (0..n).into_iter().collect();
+
+        for i in 0..k {
+            let lhs_idx = n - k + i;
+
+            permutation.swap(lhs_idx, reduce_dims[i]);
+            dbg!(&permutation);
+        }
+
+        let mut shape = input_tensor_shape;
+
+        shape.permute(&permutation);
+
+        NewReducePlan { shape }
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
     #[test]
-    fn test_compute_strided_index01() {
-        let strides = vec![4, 4, 1];
-        let el_id = 4;
-        let strided_index = compute_strided_index(el_id, &strides);
+    fn test_precompute_01() {
+        let shape = Shape::new(vec![2, 3, 4]);
+        let reduce_dims = vec![0, 2];
 
-        assert_eq!(strided_index, vec![1, 0, 0]);
+        let NewReducePlan { shape } = NewReducePlan::new_precompute(shape, reduce_dims);
+        assert_eq!(shape.as_slice(), &[3, 2, 4]);
+
+        assert_eq!(shape.get_offset(0).unwrap(), 0);
+        assert_eq!(shape.get_offset(1).unwrap(), 1);
+        assert_eq!(shape.get_offset(2).unwrap(), 2);
+        assert_eq!(shape.get_offset(3).unwrap(), 3);
+        assert_eq!(shape.get_offset(4).unwrap(), 12);
+        assert_eq!(shape.get_offset(5).unwrap(), 13);
+        assert_eq!(shape.get_offset(6).unwrap(), 14);
+        assert_eq!(shape.get_offset(7).unwrap(), 15);
+
+        assert_eq!(shape.get_offset(8).unwrap(), 4);
+        assert_eq!(shape.get_offset(9).unwrap(), 5);
+        assert_eq!(shape.get_offset(10).unwrap(), 6);
+        assert_eq!(shape.get_offset(11).unwrap(), 7);
+        assert_eq!(shape.get_offset(12).unwrap(), 16);
+        assert_eq!(shape.get_offset(13).unwrap(), 17);
+        assert_eq!(shape.get_offset(14).unwrap(), 18);
+        assert_eq!(shape.get_offset(15).unwrap(), 19);
+
+        assert_eq!(shape.get_offset(16).unwrap(), 8);
+        assert_eq!(shape.get_offset(17).unwrap(), 9);
+        assert_eq!(shape.get_offset(18).unwrap(), 10);
+        assert_eq!(shape.get_offset(19).unwrap(), 11);
+        assert_eq!(shape.get_offset(20).unwrap(), 20);
+        assert_eq!(shape.get_offset(21).unwrap(), 21);
+        assert_eq!(shape.get_offset(22).unwrap(), 22);
+        assert_eq!(shape.get_offset(23).unwrap(), 23);
     }
 
     #[test]
-    fn test_compute_strided_index02() {
-        let strides = vec![3, 1, 1];
-        let el_id = 1;
-        let strided_index = compute_strided_index(el_id, &strides);
+    fn test_precompute_02() {
+        let shape = Shape::new(vec![2, 3, 4]);
+        let reduce_dims = vec![1];
 
-        assert_eq!(strided_index, vec![0, 1, 0]);
+        let NewReducePlan { shape } = NewReducePlan::new_precompute(shape, reduce_dims);
+        assert_eq!(shape.as_slice(), &[2, 4, 3]);
+
+        assert_eq!(shape.get_offset(0).unwrap(), 0);
+        assert_eq!(shape.get_offset(1).unwrap(), 4);
+        assert_eq!(shape.get_offset(2).unwrap(), 8);
+
+        assert_eq!(shape.get_offset(3).unwrap(), 1);
+        assert_eq!(shape.get_offset(4).unwrap(), 5);
+        assert_eq!(shape.get_offset(5).unwrap(), 9);
+
+        assert_eq!(shape.get_offset(6).unwrap(), 2);
+        assert_eq!(shape.get_offset(7).unwrap(), 6);
+        assert_eq!(shape.get_offset(8).unwrap(), 10);
+
+        assert_eq!(shape.get_offset(9).unwrap(), 3);
+        assert_eq!(shape.get_offset(10).unwrap(), 7);
+        assert_eq!(shape.get_offset(11).unwrap(), 11);
+
+        assert_eq!(shape.get_offset(12).unwrap(), 12);
+        assert_eq!(shape.get_offset(13).unwrap(), 16);
+        assert_eq!(shape.get_offset(14).unwrap(), 20);
+
+        assert_eq!(shape.get_offset(15).unwrap(), 13);
+        assert_eq!(shape.get_offset(16).unwrap(), 17);
+        assert_eq!(shape.get_offset(17).unwrap(), 21);
+
+        assert_eq!(shape.get_offset(18).unwrap(), 14);
+        assert_eq!(shape.get_offset(19).unwrap(), 18);
+        assert_eq!(shape.get_offset(20).unwrap(), 22);
+
+        assert_eq!(shape.get_offset(21).unwrap(), 15);
+        assert_eq!(shape.get_offset(22).unwrap(), 19);
+        assert_eq!(shape.get_offset(23).unwrap(), 23);
     }
 }
