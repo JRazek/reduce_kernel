@@ -167,6 +167,21 @@ mod test {
     }
 
     #[test]
+    fn test_revert_tensor_permutation() {
+        let shape = vec![1, 2, 4];
+
+        assert_eq!(compute_shape_index(0, &shape), vec![0, 0, 0]);
+        assert_eq!(compute_shape_index(1, &shape), vec![0, 0, 1]);
+        assert_eq!(compute_shape_index(2, &shape), vec![0, 0, 2]);
+        assert_eq!(compute_shape_index(3, &shape), vec![0, 0, 3]);
+
+        assert_eq!(compute_shape_index(4, &shape), vec![0, 1, 0]);
+        assert_eq!(compute_shape_index(5, &shape), vec![0, 1, 1]);
+        assert_eq!(compute_shape_index(6, &shape), vec![0, 1, 2]);
+        assert_eq!(compute_shape_index(7, &shape), vec![0, 1, 3]);
+    }
+
+    #[test]
     fn test_compute_shape_index01() {
         let shape = vec![4, 4, 1];
 
