@@ -14,8 +14,6 @@ use super::reduce::ops::sum::SumOp;
 use super::reduce::reduce_cuda::reduce;
 use super::reduce::reduce_cuda::ReduceOperator;
 
-use crate::reduce::ReducePlan;
-
 use crate::kernel::{load_and_get_kernel, Kernel};
 
 mod exp;

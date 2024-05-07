@@ -33,7 +33,7 @@ pub struct Shape {
     pub(crate) strides: Vec<usize>,
 }
 
-pub fn compute_strides(shape: &[usize]) -> Vec<usize> {
+pub fn compute_continuous_strides(shape: &[usize]) -> Vec<usize> {
     let mut res = vec![1; shape.len()];
     for i in 1..shape.len() {
         let idx = shape.len() - i - 1;
@@ -58,7 +58,7 @@ impl Shape {
     }
 
     pub fn new(shape: Vec<usize>) -> Self {
-        let strides = compute_strides(&shape);
+        let strides = compute_continuous_strides(&shape);
         Self {
             permutation: (0..shape.len()).into_iter().collect(),
             shape,
@@ -68,31 +68,27 @@ impl Shape {
 
     pub fn revert_permutations(&mut self) {
         unsafe {
-            self.permute_unchecked(&self.permutation);
+            //TODO, test it actually
+
+            permute_unchecked(&mut self.shape, &self.permutation);
+            permute_unchecked(&mut self.strides, &self.permutation);
             self.permutation = (0..self.shape.len()).into_iter().collect();
         }
     }
 
-    pub fn permute(&mut self, permutation: &[usize]) {
+    pub fn permute(&mut self, permutation: impl Into<Vec<usize>>) {
         let n = self.shape.len();
 
-        //check if valid permutation
-        let mut check = permutation.to_vec();
-        check.sort();
-        check.dedup();
-        assert_eq!(check.len(), n);
+        let permutation: Vec<_> = permutation.into();
+
+        assert!(check_is_permutation(permutation.clone()));
 
         unsafe {
-            self.permute_unchecked(permutation);
-            permute_unchecked(&mut self.permutation, &permutation);
+            permute_unchecked(&mut self.shape, &permutation);
+            permute_unchecked(&mut self.strides, &permutation);
         }
-    }
 
-    unsafe fn permute_unchecked(&mut self, permutation: &[usize]) {
-        let n = self.shape.len();
-
-        permute_unchecked(&mut self.shape, permutation);
-        permute_unchecked(&mut self.strides, permutation);
+        self.permutation = permutation;
     }
 
     pub fn get_offset(&self, idx: usize) -> Option<usize> {
@@ -110,17 +106,20 @@ impl Shape {
     }
 }
 
-unsafe fn permute_unchecked(input: &mut [usize], permutation: &[usize]) {
-    let input_buf = input.to_vec();
+fn check_is_permutation(permutation: impl Into<Vec<usize>>) -> bool {
+    let mut check = permutation.into();
+    check.sort();
+    check.dedup();
+    return check.len() == check.len();
+}
 
-    //can be optimized somehow..
+unsafe fn permute_unchecked(input: &mut [usize], permutation: &[usize]) {
+    //TODO: traverse without copying.
+
+    let input_buf = input.to_vec();
     for i in 0..input.len() {
         input[i] = input_buf[permutation[i]];
     }
-}
-
-fn dot(lhs: &Vec<usize>, rhs: &Vec<usize>) -> usize {
-    lhs.iter().zip(rhs.iter()).map(|(&l, &r)| l * r).sum()
 }
 
 pub(crate) fn compute_strided_offset(index: &[usize], strides: &[usize]) -> usize {
@@ -182,7 +181,14 @@ mod test {
         assert_eq!(compute_shape_index(7, &shape), vec![1, 3, 0]);
 
         assert_eq!(compute_shape_index(8, &shape), vec![2, 0, 0]);
-        //and so on..
+        assert_eq!(compute_shape_index(9, &shape), vec![2, 1, 0]);
+        assert_eq!(compute_shape_index(10, &shape), vec![2, 2, 0]);
+        assert_eq!(compute_shape_index(11, &shape), vec![2, 3, 0]);
+
+        assert_eq!(compute_shape_index(12, &shape), vec![3, 0, 0]);
+        assert_eq!(compute_shape_index(13, &shape), vec![3, 1, 0]);
+        assert_eq!(compute_shape_index(14, &shape), vec![3, 2, 0]);
+        assert_eq!(compute_shape_index(15, &shape), vec![3, 3, 0]);
     }
 
     #[test]
